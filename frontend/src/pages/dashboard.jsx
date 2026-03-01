@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import lockedInLogo from "../assets/lockedin.png";
 
 const SEED_APPLICATIONS = [
   {
@@ -202,8 +203,7 @@ export default function Dashboard({ onLogout, onNavigate }) {
       <header className="top-nav">
         <div className="top-nav-inner">
           <div className="brand">
-            <span className="brand-dot" aria-hidden="true" />
-            <span className="brand-name">LockedIn Tracker</span>
+            <img className="brand-logo" src={lockedInLogo} alt="LockedIn" />
           </div>
 
           <nav className="nav-links" aria-label="Primary">

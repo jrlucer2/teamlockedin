@@ -1,5 +1,5 @@
 import { useState } from "react";
-import lockedInLogo from "../assets/lockedin-logo.svg";
+import lockedInLogo from "../assets/lockedin.png";
 import "../styles/dashboard.css";
 import "../styles/applications.css";
 
