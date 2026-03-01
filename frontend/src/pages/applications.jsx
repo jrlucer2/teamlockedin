@@ -4,6 +4,7 @@ import "../styles/dashboard.css";
 import "../styles/applications.css";
 
 const INITIAL_FORM = {
+  id: null,
   jobTitle: "",
   company: "",
   location: "",
@@ -46,6 +47,7 @@ export default function Applications({ onLogout, onNavigate }) {
   const [form, setForm] = useState(INITIAL_FORM);
   const [error, setError] = useState("");
   const [applications, setApplications] = useState([]);
+  const [editingId, setEditingId] = useState(null);
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -53,17 +55,18 @@ export default function Applications({ onLogout, onNavigate }) {
 
   function validateForm() {
     if (!form.jobTitle.trim()) return "Job title is required.";
+    if (!form.status) return "Application status is required.";
     if (!form.company.trim()) return "Company is required.";
     if (!form.location.trim()) return "Location is required.";
-    if (!form.closingDate) return "Closing date is required.";
-    if (!form.jobUrl.trim()) return "Job URL is required.";
-    if (!form.jobDescription.trim()) return "Job description is required.";
+    if (!form.positionType) return "Position type is required.";
 
-    try {
-      // Throws if URL is invalid.
-      new URL(form.jobUrl.trim());
-    } catch {
-      return "Job URL must be a valid link.";
+    if (form.jobUrl.trim()) {
+      try {
+        // Throws if URL is invalid.
+        new URL(form.jobUrl.trim());
+      } catch {
+        return "Job URL must be a valid link.";
+      }
     }
 
     if (form.postingDate && form.closingDate && form.closingDate < form.postingDate) {
@@ -85,10 +88,10 @@ export default function Applications({ onLogout, onNavigate }) {
       return;
     }
 
-    const nextId = Math.max(0, ...applications.map((item) => item.id)) + 1;
+    const recordId = editingId ?? Math.max(0, ...applications.map((item) => item.id)) + 1;
     const record = {
       ...form,
-      id: nextId,
+      id: recordId,
       jobTitle: form.jobTitle.trim(),
       company: form.company.trim(),
       location: form.location.trim(),
@@ -99,13 +102,39 @@ export default function Applications({ onLogout, onNavigate }) {
       createdAt: new Date().toISOString(),
     };
 
-    setApplications((prev) => [record, ...prev]);
+    if (editingId == null) {
+      setApplications((prev) => [record, ...prev]);
+    } else {
+      setApplications((prev) => prev.map((entry) => (entry.id === editingId ? record : entry)));
+    }
     setForm(INITIAL_FORM);
+    setEditingId(null);
     setError("");
   }
 
   function clearForm() {
     setForm(INITIAL_FORM);
+    setEditingId(null);
+    setError("");
+  }
+
+  function editApplication(application) {
+    setForm({
+      id: application.id,
+      jobTitle: application.jobTitle ?? "",
+      company: application.company ?? "",
+      location: application.location ?? "",
+      positionType: application.positionType ?? "full_time",
+      postingDate: application.postingDate ?? "",
+      closingDate: application.closingDate ?? "",
+      salary: application.salary === "" ? "" : String(application.salary ?? ""),
+      salaryType: application.salaryType ?? "yearly",
+      status: application.status ?? "applied",
+      jobUrl: application.jobUrl ?? "",
+      jobDescription: application.jobDescription ?? "",
+      notes: application.notes ?? "",
+    });
+    setEditingId(application.id);
     setError("");
   }
 
@@ -150,8 +179,10 @@ export default function Applications({ onLogout, onNavigate }) {
       <main className="dashboard applications-page" aria-label="Applications">
         <section className="application-entry-card" aria-label="Application entry form">
           <div className="entry-head">
-            <h1 className="entry-title">New Job Application</h1>
-            <p className="entry-subtitle">Capture the core details for each role in one place.</p>
+            <h1 className="entry-title">{editingId == null ? "New Job Application" : "Edit Job Application"}</h1>
+            <p className="entry-subtitle">
+              Capture core details first, then add optional information whenever you are ready.
+            </p>
           </div>
 
           <form className="app-submit-form" onSubmit={handleSubmit}>
@@ -279,10 +310,10 @@ export default function Applications({ onLogout, onNavigate }) {
 
             <div className="submit-actions">
               <button className="ghost-btn" type="button" onClick={clearForm}>
-                Clear Form
+                {editingId == null ? "Clear Form" : "Cancel Edit"}
               </button>
               <button className="primary-btn" type="submit">
-                Save Application
+                {editingId == null ? "Save Application" : "Update Application"}
               </button>
             </div>
           </form>
@@ -320,9 +351,14 @@ export default function Applications({ onLogout, onNavigate }) {
                   <p className="log-description">{application.jobDescription}</p>
 
                   <div className="log-footer">
-                    <a href={application.jobUrl} target="_blank" rel="noreferrer" className="ghost-btn log-link">
-                      Open Job Link
-                    </a>
+                    {application.jobUrl ? (
+                      <a href={application.jobUrl} target="_blank" rel="noreferrer" className="ghost-btn log-link">
+                        Open Job Link
+                      </a>
+                    ) : null}
+                    <button className="ghost-btn" type="button" onClick={() => editApplication(application)}>
+                      Edit
+                    </button>
                     <button className="danger-btn" type="button" onClick={() => removeApplication(application.id)}>
                       Delete
                     </button>
