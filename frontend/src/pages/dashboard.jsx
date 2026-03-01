@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import lockedInLogo from "../assets/lockedindark.png";
 
 const SEED_APPLICATIONS = [
   {
@@ -120,7 +121,7 @@ function ApplicationCard({ app, onOpenDetails, onDelete }) {
   );
 }
 
-export default function Dashboard({ onLogout }) {
+export default function Dashboard({ onLogout, onNavigate }) {
   const [applications, setApplications] = useState(SEED_APPLICATIONS);
   const [reminders, setReminders] = useState(SEED_REMINDERS);
 
@@ -202,26 +203,25 @@ export default function Dashboard({ onLogout }) {
       <header className="top-nav">
         <div className="top-nav-inner">
           <div className="brand">
-            <span className="brand-dot" aria-hidden="true" />
-            <span className="brand-name">LockedIn Tracker</span>
+            <img className="brand-logo" src={lockedInLogo} alt="LockedIn" />
           </div>
 
           <nav className="nav-links" aria-label="Primary">
-            <a className="nav-link is-active" href="#">
+            <button className="nav-link is-active" type="button" onClick={() => onNavigate?.("dashboard")}>
               Dashboard
-            </a>
-            <a className="nav-link" href="#">
+            </button>
+            <button className="nav-link" type="button" onClick={() => onNavigate?.("applications")}>
               Applications
-            </a>
-            <a className="nav-link" href="#">
+            </button>
+            <button className="nav-link" type="button" disabled>
               Reminders
-            </a>
-            <a className="nav-link" href="#">
+            </button>
+            <button className="nav-link" type="button" disabled>
               Contacts
-            </a>
-            <a className="nav-link" href="#">
+            </button>
+            <button className="nav-link" type="button" disabled>
               Documents
-            </a>
+            </button>
           </nav>
 
           <div className="nav-actions" aria-label="Utilities">
