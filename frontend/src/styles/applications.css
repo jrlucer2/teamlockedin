@@ -1,0 +1,171 @@
+/* Applications-specific polish layered on top of dashboard.css */
+
+.applications-panel {
+  margin-top: 18px;
+}
+
+.applications-table-wrap {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(8, 14, 26, 0.45);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+
+.applications-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.applications-table thead th {
+  text-align: left;
+  font-weight: 600;
+  padding: 14px 14px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+}
+
+.applications-table tbody td {
+  padding: 14px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+  vertical-align: middle;
+}
+
+.applications-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.td-strong {
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.th-actions,
+.td-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.td-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.td-empty {
+  text-align: center;
+  padding: 22px 14px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* Modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  z-index: 1000;
+}
+
+.modal-card {
+  width: min(720px, 100%);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(10, 16, 28, 0.92);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.modal-body {
+  padding: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* Form */
+.app-form .form-error {
+  padding: 10px 12px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  background: rgba(255, 77, 77, 0.12);
+  border: 1px solid rgba(255, 77, 77, 0.25);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.form-field {
+  display: grid;
+  gap: 8px;
+}
+
+.form-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.form-field input,
+.form-field select {
+  width: 100%;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  outline: none;
+}
+
+.form-field input:focus,
+.form-field select:focus {
+  border-color: rgba(90, 160, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(90, 160, 255, 0.12);
+}
+
+.form-field--salary {
+  grid-column: 1 / -1;
+}
+
+.salary-row {
+  display: grid;
+  grid-template-columns: 1fr 110px;
+  gap: 10px;
+}
+
+@media (max-width: 780px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .td-actions {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+}
