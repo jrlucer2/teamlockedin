@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import lockedInLogo from "../assets/lockedin.png";
+import lockedInLogo from "../assets/lockedindark.png";
 
 const SEED_APPLICATIONS = [
   {
