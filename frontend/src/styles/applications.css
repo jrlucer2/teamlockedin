@@ -1,123 +1,48 @@
-/* Applications-specific polish layered on top of dashboard.css */
+/* Applications page: form-first workflow (no dashboard-style metrics). */
 
-.applications-panel {
-  margin-top: 18px;
+.applications-page {
+  display: grid;
+  gap: 18px;
 }
 
-.applications-table-wrap {
+.application-entry-card,
+.application-log-card {
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(8, 14, 26, 0.45);
+  background: rgba(8, 14, 26, 0.48);
   backdrop-filter: blur(12px);
-  overflow: hidden;
-}
-
-.applications-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.applications-table thead th {
-  text-align: left;
-  font-weight: 600;
-  padding: 14px 14px;
-  color: rgba(255, 255, 255, 0.82);
-  background: rgba(255, 255, 255, 0.04);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  white-space: nowrap;
-}
-
-.applications-table tbody td {
-  padding: 14px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.78);
-  vertical-align: middle;
-}
-
-.applications-table tbody tr:hover td {
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.td-strong {
-  font-weight: 650;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.th-actions,
-.td-actions {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.td-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.td-empty {
-  text-align: center;
-  padding: 22px 14px;
-  color: rgba(255, 255, 255, 0.62);
-}
-
-/* Modal */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: grid;
-  place-items: center;
   padding: 18px;
-  z-index: 1000;
 }
 
-.modal-card {
-  width: min(720px, 100%);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(10, 16, 28, 0.92);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-  overflow: hidden;
+.entry-head {
+  margin-bottom: 14px;
 }
 
-.modal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.modal-title {
+.entry-title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 24px;
 }
 
-.modal-body {
-  padding: 16px;
+.entry-title--small {
+  font-size: 18px;
 }
 
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 14px;
+.entry-subtitle {
+  margin: 6px 0 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
 }
 
-/* Form */
-.app-form .form-error {
+.form-error {
   padding: 10px 12px;
   border-radius: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   background: rgba(255, 77, 77, 0.12);
   border: 1px solid rgba(255, 77, 77, 0.25);
   color: rgba(255, 255, 255, 0.9);
 }
 
-.form-grid {
+.app-submit-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
@@ -134,23 +59,31 @@
 }
 
 .form-field input,
-.form-field select {
+.form-field select,
+.form-field textarea {
   width: 100%;
   border-radius: 12px;
   padding: 10px 12px;
   background: rgba(255, 255, 255, 0.04);
   color: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   outline: none;
+  font: inherit;
+}
+
+.form-field textarea {
+  resize: vertical;
 }
 
 .form-field input:focus,
-.form-field select:focus {
+.form-field select:focus,
+.form-field textarea:focus {
   border-color: rgba(90, 160, 255, 0.55);
   box-shadow: 0 0 0 3px rgba(90, 160, 255, 0.12);
 }
 
-.form-field--salary {
+.form-field--salary,
+.form-field--full {
   grid-column: 1 / -1;
 }
 
@@ -160,12 +93,102 @@
   gap: 10px;
 }
 
-@media (max-width: 780px) {
-  .form-grid {
+.submit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.log-empty {
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 18px;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.log-list {
+  display: grid;
+  gap: 12px;
+}
+
+.log-item {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(2, 8, 22, 0.45);
+  padding: 14px;
+}
+
+.log-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.log-title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.log-company {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+}
+
+.log-meta-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+}
+
+.log-description {
+  margin: 12px 0 0;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.log-footer {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.log-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+@media (max-width: 860px) {
+  .app-submit-grid {
     grid-template-columns: 1fr;
   }
-  .td-actions {
+
+  .form-field--salary,
+  .form-field--full {
+    grid-column: auto;
+  }
+
+  .log-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .log-item-head {
     flex-direction: column;
-    align-items: flex-end;
+    align-items: flex-start;
+  }
+
+  .submit-actions,
+  .log-footer {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }

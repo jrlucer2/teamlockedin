@@ -120,7 +120,7 @@ function ApplicationCard({ app, onOpenDetails, onDelete }) {
   );
 }
 
-export default function Dashboard({ onLogout }) {
+export default function Dashboard({ onLogout, onNavigate }) {
   const [applications, setApplications] = useState(SEED_APPLICATIONS);
   const [reminders, setReminders] = useState(SEED_REMINDERS);
 
@@ -207,21 +207,21 @@ export default function Dashboard({ onLogout }) {
           </div>
 
           <nav className="nav-links" aria-label="Primary">
-            <a className="nav-link is-active" href="#">
+            <button className="nav-link is-active" type="button" onClick={() => onNavigate?.("dashboard")}>
               Dashboard
-            </a>
-            <a className="nav-link" href="#">
+            </button>
+            <button className="nav-link" type="button" onClick={() => onNavigate?.("applications")}>
               Applications
-            </a>
-            <a className="nav-link" href="#">
+            </button>
+            <button className="nav-link" type="button" disabled>
               Reminders
-            </a>
-            <a className="nav-link" href="#">
+            </button>
+            <button className="nav-link" type="button" disabled>
               Contacts
-            </a>
-            <a className="nav-link" href="#">
+            </button>
+            <button className="nav-link" type="button" disabled>
               Documents
-            </a>
+            </button>
           </nav>
 
           <div className="nav-actions" aria-label="Utilities">

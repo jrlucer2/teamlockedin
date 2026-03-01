@@ -141,18 +141,28 @@ a { color: inherit; }
 }
 
 .nav-link {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
   text-decoration: none;
   font-size: 13px;
   color: var(--muted);
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid transparent;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
   transition: transform 140ms ease, background 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 
 .nav-link:hover {
   background: rgba(148, 163, 184, 0.08);
   color: var(--text);
+}
+
+.nav-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .nav-link.is-active {

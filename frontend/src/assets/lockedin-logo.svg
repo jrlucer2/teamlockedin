@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 495" role="img" aria-labelledby="title desc">
+  <title id="title">LockedIn logo</title>
+  <desc id="desc">Stylized LockedIn wordmark over a soft oval backdrop.</desc>
+  <rect width="760" height="495" fill="#d6d4ca"/>
+  <ellipse cx="380" cy="245" rx="250" ry="105" fill="#c9c6bb"/>
+  <text
+    x="380"
+    y="325"
+    text-anchor="middle"
+    font-family="'Bodoni Moda', 'Didot', 'Times New Roman', serif"
+    font-size="196"
+    letter-spacing="3"
+    fill="#9a978f"
+  >
+    LoKeDIn
+  </text>
+</svg>

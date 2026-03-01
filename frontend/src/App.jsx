@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import Login from "./pages/login";
 import Dashboard from "./pages/dashboard";
+import Applications from "./pages/applications";
 
 export default function App() {
   const [authStatus, setAuthStatus] = useState("loading");
+  const [currentPage, setCurrentPage] = useState("dashboard");
   // loading | authenticated | unauthenticated
 
   useEffect(() => {
@@ -42,19 +44,23 @@ export default function App() {
     return (
       <Login
         onLoginSuccess={() => {
+          setCurrentPage("dashboard");
           setAuthStatus("authenticated");
         }}
       />
     );
   }
 
-  return (
-    <Dashboard
-      onLogout={() => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("userEmail");
-        setAuthStatus("unauthenticated");
-      }}
-    />
-  );
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("userEmail");
+    setCurrentPage("dashboard");
+    setAuthStatus("unauthenticated");
+  };
+
+  if (currentPage === "applications") {
+    return <Applications onLogout={handleLogout} onNavigate={setCurrentPage} />;
+  }
+
+  return <Dashboard onLogout={handleLogout} onNavigate={setCurrentPage} />;
 }

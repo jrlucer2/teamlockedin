@@ -1,71 +1,22 @@
-import { useMemo, useState } from "react";
-
-// Reuse the same general “app card + glass” vibe from dashboard.css.
-// If dashboard.css is already imported globally (App.jsx), you can remove the import below.
+import { useState } from "react";
+import lockedInLogo from "../assets/lockedin-logo.svg";
 import "../styles/dashboard.css";
 import "../styles/applications.css";
 
-const SEED_APPLICATIONS = [
-  {
-    id: 1,
-    jobTitle: "Software Engineer Intern",
-    company: "Google",
-    salary: 35,
-    salaryType: "hourly",
-    positionType: "internship",
-    postingDate: "2026-02-10",
-    location: "Mountain View, CA",
-    status: "interview",
-  },
-  {
-    id: 2,
-    jobTitle: "Marketing Coordinator",
-    company: "Amazon",
-    salary: 62000,
-    salaryType: "yearly",
-    positionType: "full_time",
-    postingDate: "2026-02-02",
-    location: "Seattle, WA",
-    status: "applied",
-  },
-  {
-    id: 3,
-    jobTitle: "Data Analyst",
-    company: "Amazon",
-    salary: 85000,
-    salaryType: "yearly",
-    positionType: "full_time",
-    postingDate: "2026-01-25",
-    location: "Remote",
-    status: "offer",
-  },
-  {
-    id: 4,
-    jobTitle: "UX Designer",
-    company: "Boeing",
-    salary: 45,
-    salaryType: "hourly",
-    positionType: "contractor",
-    postingDate: "2026-02-14",
-    location: "Everett, WA",
-    status: "applied",
-  },
-  {
-    id: 5,
-    jobTitle: "Project Manager",
-    company: "Microsoft",
-    salary: 98000,
-    salaryType: "yearly",
-    positionType: "full_time",
-    postingDate: "2026-01-18",
-    location: "Redmond, WA",
-    status: "rejected",
-  },
-];
-
-function normalize(value) {
-  return String(value ?? "").toLowerCase().trim();
-}
+const INITIAL_FORM = {
+  jobTitle: "",
+  company: "",
+  location: "",
+  positionType: "full_time",
+  postingDate: "",
+  closingDate: "",
+  salary: "",
+  salaryType: "yearly",
+  status: "applied",
+  jobUrl: "",
+  jobDescription: "",
+  notes: "",
+};
 
 function formatPosition(positionType) {
   const map = {
@@ -77,255 +28,89 @@ function formatPosition(positionType) {
   return map[positionType] || positionType;
 }
 
-function formatStatus(status) {
-  const map = {
-    applied: "Applied",
-    interview: "Interview",
-    rejected: "Rejected",
-    offer: "Offer",
-  };
-  return map[status] || status;
-}
-
 function formatMoney(amount, salaryType) {
-  if (amount === "" || amount === null || amount === undefined) return "—";
-  const num = Number(amount);
-  if (Number.isNaN(num)) return "—";
-  if (salaryType === "hourly") return `$${num}/hr`;
-  return `$${num.toLocaleString()}/yr`;
+  if (!amount) return "Not provided";
+  const value = Number(amount);
+  if (Number.isNaN(value)) return "Not provided";
+  return salaryType === "hourly" ? `$${value}/hr` : `$${value.toLocaleString()}/yr`;
 }
 
-function StatusPill({ status }) {
-  const normalized = normalize(status).replace(/\s+/g, "-");
-  const className = `status-pill status-${normalized}`;
-  return <span className={className}>{formatStatus(status)}</span>;
-}
-
-/**
- * Modal (simple + accessible enough for prototype)
- */
-function Modal({ title, children, onClose }) {
-  return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      onMouseDown={(e) => {
-        // close if clicking the dark backdrop, not the card
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="modal-card">
-        <div className="modal-head">
-          <h3 className="modal-title">{title}</h3>
-          <button className="icon-btn" type="button" aria-label="Close" onClick={onClose}>
-            ✕
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function ApplicationForm({ initial, onCancel, onSave }) {
-  const [jobTitle, setJobTitle] = useState(initial.jobTitle ?? "");
-  const [company, setCompany] = useState(initial.company ?? "");
-  const [salary, setSalary] = useState(initial.salary ?? "");
-  const [salaryType, setSalaryType] = useState(initial.salaryType ?? "yearly");
-  const [positionType, setPositionType] = useState(initial.positionType ?? "full_time");
-  const [postingDate, setPostingDate] = useState(initial.postingDate ?? "");
-  const [location, setLocation] = useState(initial.location ?? "");
-  const [status, setStatus] = useState(initial.status ?? "applied");
-  const [error, setError] = useState("");
-
-  function handleSubmit(e) {
-    e.preventDefault();
-    setError("");
-
-    if (!jobTitle.trim()) return setError("Job title is required.");
-    if (!company.trim()) return setError("Company is required.");
-    if (!location.trim()) return setError("Location is required.");
-    if (!postingDate) return setError("Posting date is required.");
-
-    const salaryValue = salary === "" ? "" : Number(salary);
-    if (salary !== "" && Number.isNaN(salaryValue)) return setError("Salary must be a number.");
-
-    onSave({
-      ...initial,
-      jobTitle: jobTitle.trim(),
-      company: company.trim(),
-      salary: salaryValue,
-      salaryType,
-      positionType,
-      postingDate,
-      location: location.trim(),
-      status,
-    });
-  }
-
-  return (
-    <form className="app-form" onSubmit={handleSubmit}>
-      {error ? <div className="form-error">{error}</div> : null}
-
-      <div className="form-grid">
-        <label className="form-field">
-          <span className="form-label">Job Title</span>
-          <input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="e.g., Data Analyst" />
-        </label>
-
-        <label className="form-field">
-          <span className="form-label">Company</span>
-          <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="e.g., Amazon" />
-        </label>
-
-        <label className="form-field">
-          <span className="form-label">Location</span>
-          <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g., Tempe, AZ / Remote" />
-        </label>
-
-        <label className="form-field">
-          <span className="form-label">Posting Date</span>
-          <input type="date" value={postingDate} onChange={(e) => setPostingDate(e.target.value)} />
-        </label>
-
-        <label className="form-field">
-          <span className="form-label">Position Type</span>
-          <select value={positionType} onChange={(e) => setPositionType(e.target.value)}>
-            <option value="full_time">Full-time</option>
-            <option value="part_time">Part-time</option>
-            <option value="contractor">Contractor</option>
-            <option value="internship">Internship</option>
-          </select>
-        </label>
-
-        <label className="form-field">
-          <span className="form-label">Status</span>
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="applied">Applied</option>
-            <option value="interview">Interview</option>
-            <option value="rejected">Rejected</option>
-            <option value="offer">Offer</option>
-          </select>
-        </label>
-
-        <label className="form-field form-field--salary">
-          <span className="form-label">Salary</span>
-          <div className="salary-row">
-            <input
-              value={salary}
-              onChange={(e) => setSalary(e.target.value)}
-              placeholder="e.g., 85000"
-              inputMode="numeric"
-            />
-            <select value={salaryType} onChange={(e) => setSalaryType(e.target.value)} aria-label="Salary type">
-              <option value="yearly">/yr</option>
-              <option value="hourly">/hr</option>
-            </select>
-          </div>
-        </label>
-      </div>
-
-      <div className="modal-actions">
-        <button className="ghost-btn" type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="primary-btn" type="submit">
-          Save
-        </button>
-      </div>
-    </form>
-  );
+function toTitleCase(value) {
+  return String(value)
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export default function Applications({ onLogout, onNavigate }) {
-  const [applications, setApplications] = useState(SEED_APPLICATIONS);
+  const [form, setForm] = useState(INITIAL_FORM);
+  const [error, setError] = useState("");
+  const [applications, setApplications] = useState([]);
 
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [positionFilter, setPositionFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("newest");
+  function updateField(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editing, setEditing] = useState(null); // app object or null
+  function validateForm() {
+    if (!form.jobTitle.trim()) return "Job title is required.";
+    if (!form.company.trim()) return "Company is required.";
+    if (!form.location.trim()) return "Location is required.";
+    if (!form.closingDate) return "Closing date is required.";
+    if (!form.jobUrl.trim()) return "Job URL is required.";
+    if (!form.jobDescription.trim()) return "Job description is required.";
 
-  const metrics = useMemo(() => {
-    const total = applications.length;
-    const applied = applications.filter((a) => a.status === "applied").length;
-    const interview = applications.filter((a) => a.status === "interview").length;
-    const offer = applications.filter((a) => a.status === "offer").length;
-    return { total, applied, interview, offer };
-  }, [applications]);
-
-  const filtered = useMemo(() => {
-    const q = normalize(query);
-
-    let list = applications.filter((a) => {
-      const matchesQuery =
-        !q ||
-        normalize(a.jobTitle).includes(q) ||
-        normalize(a.company).includes(q) ||
-        normalize(a.location).includes(q);
-
-      const matchesStatus = statusFilter === "all" ? true : a.status === statusFilter;
-      const matchesPosition = positionFilter === "all" ? true : a.positionType === positionFilter;
-
-      return matchesQuery && matchesStatus && matchesPosition;
-    });
-
-    if (sortBy === "oldest") list = [...list].reverse();
-    if (sortBy === "company") list = [...list].sort((x, y) => x.company.localeCompare(y.company));
-    if (sortBy === "status") list = [...list].sort((x, y) => x.status.localeCompare(y.status));
-
-    // “Newest” should be based on postingDate for now.
-    if (sortBy === "newest") {
-      list = [...list].sort((x, y) => String(y.postingDate).localeCompare(String(x.postingDate)));
+    try {
+      // Throws if URL is invalid.
+      new URL(form.jobUrl.trim());
+    } catch {
+      return "Job URL must be a valid link.";
     }
 
-    return list;
-  }, [applications, query, statusFilter, positionFilter, sortBy]);
-
-  function openCreate() {
-    setEditing({
-      id: null,
-      jobTitle: "",
-      company: "",
-      salary: "",
-      salaryType: "yearly",
-      positionType: "full_time",
-      postingDate: "",
-      location: "",
-      status: "applied",
-    });
-    setIsModalOpen(true);
-  }
-
-  function openEdit(app) {
-    setEditing(app);
-    setIsModalOpen(true);
-  }
-
-  function closeModal() {
-    setIsModalOpen(false);
-    setEditing(null);
-  }
-
-  function saveApplication(payload) {
-    if (payload.id == null) {
-      const nextId = Math.max(0, ...applications.map((a) => a.id)) + 1;
-      const created = { ...payload, id: nextId };
-      setApplications((prev) => [created, ...prev]);
-    } else {
-      setApplications((prev) => prev.map((a) => (a.id === payload.id ? payload : a)));
+    if (form.postingDate && form.closingDate && form.closingDate < form.postingDate) {
+      return "Closing date cannot be earlier than posting date.";
     }
-    closeModal();
+
+    if (form.salary && Number.isNaN(Number(form.salary))) {
+      return "Salary must be numeric.";
+    }
+
+    return "";
   }
 
-  function deleteApplication(id) {
-    const ok = window.confirm("Delete this application? This cannot be undone.");
-    if (!ok) return;
-    setApplications((prev) => prev.filter((a) => a.id !== id));
+  function handleSubmit(event) {
+    event.preventDefault();
+    const validationMessage = validateForm();
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+
+    const nextId = Math.max(0, ...applications.map((item) => item.id)) + 1;
+    const record = {
+      ...form,
+      id: nextId,
+      jobTitle: form.jobTitle.trim(),
+      company: form.company.trim(),
+      location: form.location.trim(),
+      jobUrl: form.jobUrl.trim(),
+      jobDescription: form.jobDescription.trim(),
+      notes: form.notes.trim(),
+      salary: form.salary ? Number(form.salary) : "",
+      createdAt: new Date().toISOString(),
+    };
+
+    setApplications((prev) => [record, ...prev]);
+    setForm(INITIAL_FORM);
+    setError("");
+  }
+
+  function clearForm() {
+    setForm(INITIAL_FORM);
+    setError("");
+  }
+
+  function removeApplication(id) {
+    setApplications((prev) => prev.filter((entry) => entry.id !== id));
   }
 
   return (
@@ -333,8 +118,7 @@ export default function Applications({ onLogout, onNavigate }) {
       <header className="top-nav">
         <div className="top-nav-inner">
           <div className="brand">
-            <span className="brand-dot" aria-hidden="true" />
-            <span className="brand-name">LockedIn Tracker</span>
+            <img className="brand-logo" src={lockedInLogo} alt="LockedIn" />
           </div>
 
           <nav className="nav-links" aria-label="Primary">
@@ -363,142 +147,192 @@ export default function Applications({ onLogout, onNavigate }) {
         </div>
       </header>
 
-      <main className="dashboard" aria-label="Applications">
-        <section className="metrics" aria-label="Application metrics">
-          <div className="metric-card">
-            <div className="metric-label">Total Applications</div>
-            <div className="metric-value">{metrics.total}</div>
+      <main className="dashboard applications-page" aria-label="Applications">
+        <section className="application-entry-card" aria-label="Application entry form">
+          <div className="entry-head">
+            <h1 className="entry-title">New Job Application</h1>
+            <p className="entry-subtitle">Capture the core details for each role in one place.</p>
           </div>
 
-          <div className="metric-card">
-            <div className="metric-label">Applied</div>
-            <div className="metric-value">{metrics.applied}</div>
-          </div>
+          <form className="app-submit-form" onSubmit={handleSubmit}>
+            {error ? <div className="form-error">{error}</div> : null}
 
-          <div className="metric-card">
-            <div className="metric-label">Interview</div>
-            <div className="metric-value">{metrics.interview}</div>
-          </div>
+            <div className="app-submit-grid">
+              <label className="form-field">
+                <span className="form-label">Job Title</span>
+                <input
+                  value={form.jobTitle}
+                  onChange={(event) => updateField("jobTitle", event.target.value)}
+                  placeholder="e.g., Software Engineer Intern"
+                />
+              </label>
 
-          <div className="metric-card">
-            <div className="metric-label">Offers</div>
-            <div className="metric-value">{metrics.offer}</div>
-          </div>
+              <label className="form-field">
+                <span className="form-label">Company</span>
+                <input
+                  value={form.company}
+                  onChange={(event) => updateField("company", event.target.value)}
+                  placeholder="e.g., Google"
+                />
+              </label>
+
+              <label className="form-field">
+                <span className="form-label">Location</span>
+                <input
+                  value={form.location}
+                  onChange={(event) => updateField("location", event.target.value)}
+                  placeholder="e.g., Remote / Seattle, WA"
+                />
+              </label>
+
+              <label className="form-field">
+                <span className="form-label">Position Type</span>
+                <select
+                  value={form.positionType}
+                  onChange={(event) => updateField("positionType", event.target.value)}
+                >
+                  <option value="full_time">Full-time</option>
+                  <option value="part_time">Part-time</option>
+                  <option value="contractor">Contractor</option>
+                  <option value="internship">Internship</option>
+                </select>
+              </label>
+
+              <label className="form-field">
+                <span className="form-label">Posting Date</span>
+                <input
+                  type="date"
+                  value={form.postingDate}
+                  onChange={(event) => updateField("postingDate", event.target.value)}
+                />
+              </label>
+
+              <label className="form-field">
+                <span className="form-label">Closing Date</span>
+                <input
+                  type="date"
+                  value={form.closingDate}
+                  onChange={(event) => updateField("closingDate", event.target.value)}
+                />
+              </label>
+
+              <label className="form-field">
+                <span className="form-label">Status</span>
+                <select value={form.status} onChange={(event) => updateField("status", event.target.value)}>
+                  <option value="applied">Applied</option>
+                  <option value="interviewing">Interviewing</option>
+                  <option value="offer">Offer</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </label>
+
+              <label className="form-field form-field--salary">
+                <span className="form-label">Salary</span>
+                <div className="salary-row">
+                  <input
+                    value={form.salary}
+                    onChange={(event) => updateField("salary", event.target.value)}
+                    placeholder="Optional"
+                    inputMode="numeric"
+                  />
+                  <select
+                    value={form.salaryType}
+                    onChange={(event) => updateField("salaryType", event.target.value)}
+                    aria-label="Salary type"
+                  >
+                    <option value="yearly">/yr</option>
+                    <option value="hourly">/hr</option>
+                  </select>
+                </div>
+              </label>
+
+              <label className="form-field form-field--full">
+                <span className="form-label">Job URL</span>
+                <input
+                  type="url"
+                  value={form.jobUrl}
+                  onChange={(event) => updateField("jobUrl", event.target.value)}
+                  placeholder="https://company.com/careers/job-123"
+                />
+              </label>
+
+              <label className="form-field form-field--full">
+                <span className="form-label">Job Description</span>
+                <textarea
+                  rows={5}
+                  value={form.jobDescription}
+                  onChange={(event) => updateField("jobDescription", event.target.value)}
+                  placeholder="Paste or summarize the role responsibilities and requirements..."
+                />
+              </label>
+
+              <label className="form-field form-field--full">
+                <span className="form-label">Notes</span>
+                <textarea
+                  rows={3}
+                  value={form.notes}
+                  onChange={(event) => updateField("notes", event.target.value)}
+                  placeholder="Optional: recruiter contact, prep notes, follow-up reminders..."
+                />
+              </label>
+            </div>
+
+            <div className="submit-actions">
+              <button className="ghost-btn" type="button" onClick={clearForm}>
+                Clear Form
+              </button>
+              <button className="primary-btn" type="submit">
+                Save Application
+              </button>
+            </div>
+          </form>
         </section>
 
-        <section className="controls" aria-label="Applications controls">
-          <div className="controls-row">
-            <div className="control control--search">
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search title, company, location..."
-                aria-label="Search applications"
-              />
-            </div>
-
-            <div className="control">
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Status filter">
-                <option value="all">Status: All</option>
-                <option value="applied">Applied</option>
-                <option value="interview">Interview</option>
-                <option value="rejected">Rejected</option>
-                <option value="offer">Offer</option>
-              </select>
-            </div>
-
-            <div className="control">
-              <select
-                value={positionFilter}
-                onChange={(e) => setPositionFilter(e.target.value)}
-                aria-label="Position filter"
-              >
-                <option value="all">Position: All</option>
-                <option value="full_time">Full-time</option>
-                <option value="part_time">Part-time</option>
-                <option value="contractor">Contractor</option>
-                <option value="internship">Internship</option>
-              </select>
-            </div>
-
-            <button className="primary-btn" type="button" onClick={openCreate}>
-              + New Application
-            </button>
+        <section className="application-log-card" aria-label="Saved applications">
+          <div className="entry-head">
+            <h2 className="entry-title entry-title--small">Saved Applications</h2>
+            <p className="entry-subtitle">{applications.length} saved</p>
           </div>
 
-          <div className="controls-row controls-row--secondary">
-            <div className="control">
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sort">
-                <option value="newest">Sort: Newest</option>
-                <option value="oldest">Oldest</option>
-                <option value="company">Company</option>
-                <option value="status">Status</option>
-              </select>
-            </div>
+          {!applications.length ? (
+            <div className="log-empty">No applications saved yet.</div>
+          ) : (
+            <div className="log-list">
+              {applications.map((application) => (
+                <article className="log-item" key={application.id}>
+                  <div className="log-item-head">
+                    <div>
+                      <h3 className="log-title">{application.jobTitle}</h3>
+                      <p className="log-company">
+                        {application.company} • {application.location}
+                      </p>
+                    </div>
+                    <span className={`status-pill status-${application.status}`}>{toTitleCase(application.status)}</span>
+                  </div>
 
-            <div className="section-meta">
-              <span className="meta-pill">Showing: {filtered.length}</span>
-            </div>
-          </div>
-        </section>
+                  <div className="log-meta-grid">
+                    <div>Position: {formatPosition(application.positionType)}</div>
+                    <div>Salary: {formatMoney(application.salary, application.salaryType)}</div>
+                    <div>Posting: {application.postingDate || "Not provided"}</div>
+                    <div>Closing: {application.closingDate}</div>
+                  </div>
 
-        <section className="applications-panel" aria-label="Applications list">
-          <div className="applications-table-wrap">
-            <table className="applications-table">
-              <thead>
-                <tr>
-                  <th>Role</th>
-                  <th>Company</th>
-                  <th>Location</th>
-                  <th>Posting</th>
-                  <th>Position</th>
-                  <th>Salary</th>
-                  <th>Status</th>
-                  <th className="th-actions">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length ? (
-                  filtered.map((a) => (
-                    <tr key={a.id}>
-                      <td className="td-strong">{a.jobTitle}</td>
-                      <td>{a.company}</td>
-                      <td>{a.location}</td>
-                      <td>{a.postingDate || "—"}</td>
-                      <td>{formatPosition(a.positionType)}</td>
-                      <td>{formatMoney(a.salary, a.salaryType)}</td>
-                      <td>
-                        <StatusPill status={a.status} />
-                      </td>
-                      <td className="td-actions">
-                        <button className="ghost-btn" type="button" onClick={() => openEdit(a)}>
-                          Edit
-                        </button>
-                        <button className="danger-btn" type="button" onClick={() => deleteApplication(a.id)}>
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={8} className="td-empty">
-                      No applications match your filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                  <p className="log-description">{application.jobDescription}</p>
+
+                  <div className="log-footer">
+                    <a href={application.jobUrl} target="_blank" rel="noreferrer" className="ghost-btn log-link">
+                      Open Job Link
+                    </a>
+                    <button className="danger-btn" type="button" onClick={() => removeApplication(application.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       </main>
-
-      {isModalOpen && editing ? (
-        <Modal title={editing.id ? "Edit Application" : "New Application"} onClose={closeModal}>
-          <ApplicationForm initial={editing} onCancel={closeModal} onSave={saveApplication} />
-        </Modal>
-      ) : null}
     </>
   );
 }
