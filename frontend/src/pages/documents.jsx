@@ -215,6 +215,11 @@ export default function Documents({ onLogout, onNavigate }) {
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) onLogout?.();
+  }, [onLogout]);
+
+  useEffect(() => {
     return () => {
       documents.forEach((item) => {
         if (item.objectUrl) URL.revokeObjectURL(item.objectUrl);

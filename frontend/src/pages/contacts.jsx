@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
 import "../styles/dashboard.css";
 import "../styles/contacts.css";
@@ -290,6 +290,11 @@ export default function Contacts({ onLogout, onNavigate }) {
 
   const [modalState, setModalState] = useState({ open: false, editing: null });
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) onLogout?.();
+  }, [onLogout]);
 
   const filtered = useMemo(() => {
     const q = normalize(query);

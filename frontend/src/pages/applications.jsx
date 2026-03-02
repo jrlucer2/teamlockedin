@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
 import "../styles/dashboard.css";
 import "../styles/applications.css";
@@ -48,6 +48,11 @@ export default function Applications({ onLogout, onNavigate }) {
   const [error, setError] = useState("");
   const [applications, setApplications] = useState([]);
   const [editingId, setEditingId] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) onLogout?.();
+  }, [onLogout]);
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));

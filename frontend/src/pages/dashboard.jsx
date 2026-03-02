@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
 
 const SEED_APPLICATIONS = [
@@ -129,6 +129,11 @@ export default function Dashboard({ onLogout, onNavigate }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [viewMode, setViewMode] = useState("cards");
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) onLogout?.();
+  }, [onLogout]);
 
   const metrics = useMemo(() => {
     return {
