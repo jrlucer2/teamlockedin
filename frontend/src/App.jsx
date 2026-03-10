@@ -6,9 +6,15 @@ export default function App() {
   const [authStatus, setAuthStatus] = useState("loading");
   // loading | authenticated | unauthenticated
 
+  function clearAuth() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("userEmail");
+  }
+
   useEffect(() => {
     async function checkAuth() {
       const token = localStorage.getItem("token");
+
       if (!token) {
         setAuthStatus("unauthenticated");
         return;
@@ -23,10 +29,13 @@ export default function App() {
 
         if (res.ok) {
           setAuthStatus("authenticated");
-        } else {
-          setAuthStatus("unauthenticated");
+          return;
         }
+
+        clearAuth();
+        setAuthStatus("unauthenticated");
       } catch {
+        clearAuth();
         setAuthStatus("unauthenticated");
       }
     }
@@ -35,7 +44,7 @@ export default function App() {
   }, []);
 
   if (authStatus === "loading") {
-    return null; // or loading spinner
+    return null;
   }
 
   if (authStatus === "unauthenticated") {
@@ -51,8 +60,7 @@ export default function App() {
   return (
     <Dashboard
       onLogout={() => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("userEmail");
+        clearAuth();
         setAuthStatus("unauthenticated");
       }}
     />

@@ -20,11 +20,19 @@ app.use(express.static(servingReactBuild ? reactDistPath : legacyPublicPath));
 
 
 app.get('/', (req, res) => {
-  res.redirect('/logon.html');
+    if (servingReactBuild) {
+        return res.sendFile(path.join(reactDistPath, 'index.html'));
+    }
+
+    res.send('Frontend dev server is running on http://localhost:5173');
 });
 
 app.get('/dashboard', (req, res) => {
-  res.redirect('/dashboard.html');
+    if (servingReactBuild) {
+        return res.sendFile(path.join(reactDistPath, 'index.html'));
+    }
+
+    res.send('Frontend dev server is running on http://localhost:5173');
 });
 
 /////////////////////////////////////////////////
@@ -34,6 +42,7 @@ app.get('/dashboard', (req, res) => {
 async function createConnection() {
     return await mysql.createConnection({
         host: process.env.DB_HOST,
+        port: Number(process.env.DB_PORT || 3306),
         user: process.env.DB_USER,
         password: process.env.DB_PASSWORD,
         database: process.env.DB_NAME,
@@ -76,7 +85,9 @@ async function authenticateToken(req, res, next) {
                 return res.status(403).json({ message: 'Account not found or deactivated.' });
             }
 
-            req.user = decoded;  // Save the decoded email for use in the route
+            req.user = {
+                 email: normalizedEmail,
+            };
             next();  // Proceed to the next middleware or route handler
         } catch (dbError) {
             console.error(dbError);

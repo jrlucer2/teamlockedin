@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { authenticatedFetch } from "../lib/api";
 
 const SEED_APPLICATIONS = [
   {
@@ -128,6 +129,21 @@ export default function Dashboard({ onLogout }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [viewMode, setViewMode] = useState("cards");
+  const [userListCount, setUserListCount] = useState(null);
+
+  useEffect(() => {
+    async function loadProtectedData() {
+      try {
+        const res = await authenticatedFetch("/api/users");
+        const data = await res.json();
+        setUserListCount(Array.isArray(data.emails) ? data.emails.length : 0);
+      } catch (error) {
+        console.error("Protected fetch failed:", error);
+      }
+    }
+
+    loadProtectedData();
+  }, []);
 
   const metrics = useMemo(() => {
     return {
@@ -304,6 +320,11 @@ export default function Dashboard({ onLogout }) {
           <div className="metric-card">
             <div className="metric-label">Set Reminders</div>
             <div className="metric-value">{metrics.setReminders}</div>
+          </div>
+
+          <div className="metric-card">
+            <div className="metric-label">Registered Users</div>
+            <div className="metric-value">{userListCount ?? "..."}</div>
           </div>
         </section>
 
