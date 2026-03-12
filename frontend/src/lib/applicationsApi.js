@@ -16,12 +16,12 @@ async function request(path, options = {}) {
 }
 
 export async function fetchApplications() {
-  const data = await request("/api/applications");
+  const data = await request("/api/jobs");
   return data.applications || [];
 }
 
 export async function createApplication(payload) {
-  const data = await request("/api/applications", {
+  const data = await request("/api/jobs", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -33,7 +33,7 @@ export async function createApplication(payload) {
 }
 
 export async function updateApplication(applicationId, payload) {
-  const data = await request(`/api/applications/${applicationId}`, {
+  const data = await request(`/api/jobs/${applicationId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -45,7 +45,7 @@ export async function updateApplication(applicationId, payload) {
 }
 
 export async function deleteApplication(applicationId) {
-  await request(`/api/applications/${applicationId}`, {
+  await request(`/api/jobs/${applicationId}`, {
     method: "DELETE",
   });
 }

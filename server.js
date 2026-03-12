@@ -274,7 +274,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   res.status(200).json({ email: req.user.email });
 });
 
-app.get('/api/applications', authenticateToken, async (req, res) => {
+app.get('/api/jobs', authenticateToken, async (req, res) => {
   const email = normalizeEmail(req.user.email);
 
   try {
@@ -313,7 +313,7 @@ app.get('/api/applications', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/applications', authenticateToken, async (req, res) => {
+app.post('/api/jobs', authenticateToken, async (req, res) => {
   const tokenEmail = normalizeEmail(req.user.email);
   const requestEmail = normalizeEmail(req.body.email);
 
@@ -378,7 +378,7 @@ app.post('/api/applications', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/applications/:applicationId', authenticateToken, async (req, res) => {
+app.put('/api/jobs/:applicationId', authenticateToken, async (req, res) => {
   const email = normalizeEmail(req.user.email);
   const applicationId = Number(req.params.applicationId);
 
@@ -448,7 +448,7 @@ app.put('/api/applications/:applicationId', authenticateToken, async (req, res) 
   }
 });
 
-app.delete('/api/applications/:applicationId', authenticateToken, async (req, res) => {
+app.delete('/api/jobs/:applicationId', authenticateToken, async (req, res) => {
   const email = normalizeEmail(req.user.email);
   const applicationId = Number(req.params.applicationId);
 
