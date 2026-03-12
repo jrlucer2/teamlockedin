@@ -1,191 +1,195 @@
 import { useMemo, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
 
-const SEED_APPLICATIONS = [
-  {
-    id: 1,
-    title: "Software Engineer Intern",
-    company: "Google",
-    location: "Mountain View, CA",
-    status: "Interviewing",
-    next: "Interview • Feb 28, 2:00 PM",
-    docs: 2,
-    contacts: 1,
-  },
-  {
-    id: 2,
-    title: "Marketing Coordinator",
-    company: "Amazon",
-    location: "Seattle, WA",
-    status: "Applied",
-    next: "Follow-up • Feb 26",
-    docs: 1,
-    contacts: 1,
-  },
-  {
-    id: 3,
-    title: "Data Analyst",
-    company: "Amazon",
-    location: "Remote",
-    status: "Offer",
-    next: "Review offer",
-    docs: 2,
-    contacts: 2,
-  },
-  {
-    id: 4,
-    title: "UX Designer",
-    company: "Boeing",
-    location: "Everett, WA",
-    status: "Saved",
-    next: "Apply",
-    docs: 1,
-    contacts: 0,
-  },
-  {
-    id: 5,
-    title: "Project Manager",
-    company: "Microsoft",
-    location: "Redmond, WA",
-    status: "Rejected",
-    next: "Archive",
-    docs: 1,
-    contacts: 0,
-  },
-  {
-    id: 6,
-    title: "Business Analyst",
-    company: "Chase",
-    location: "Tempe, AZ",
-    status: "Applied",
-    next: "Follow-up",
-    docs: 2,
-    contacts: 1,
-  },
-];
-
 const SEED_REMINDERS = [
-  { id: 1, date: "Feb 26", text: "Follow-up Call (Amazon)", applicationId: 2 },
-  { id: 2, date: "Feb 28", text: "Interview (Google)", applicationId: 1 },
-  { id: 3, date: "Mar 1", text: "Application Deadline (Microsoft)", applicationId: 5 },
+  { id: 1, date: "Feb 26", text: "Follow-up Call", applicationId: 2 },
+  { id: 2, date: "Feb 28", text: "Interview Prep", applicationId: 1 },
+  { id: 3, date: "Mar 1", text: "Application Deadline", applicationId: 5 },
 ];
 
 function normalize(value) {
   return String(value ?? "").toLowerCase().trim();
 }
 
-function StatusPill({ status }) {
-  const normalized = normalize(status).replace(/\s+/g, "-");
-  const className = `status-pill status-${normalized}`;
-  return <span className={className}>{status}</span>;
+function toTitleCase(value) {
+  return String(value ?? "")
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
-function ApplicationCard({ app, onOpenDetails, onDelete, onEdit }) {
+function formatCardDate(value) {
+  if (!value) return "Date not set";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function buildApplicationSummary(application) {
+  if (application.closing_date) {
+    return `Closes: ${formatCardDate(application.closing_date)}`;
+  }
+
+  if (application.posting_date) {
+    return `Posted: ${formatCardDate(application.posting_date)}`;
+  }
+
+  return "Dates not provided";
+}
+
+function buildApplicationDetail(application) {
+  if (application.job_salary) {
+    return application.salary_hourly
+      ? `Compensation: $${Number(application.job_salary)}/hr`
+      : `Compensation: $${Number(application.job_salary).toLocaleString()}/yr`;
+  }
+
+  if (application.job_url) {
+    return "Job link saved";
+  }
+
+  return "No salary or link added";
+}
+
+function StatusPill({ status }) {
+  const normalized = normalize(status).replace(/\s+/g, "-");
+  return <span className={`status-pill status-${normalized}`}>{toTitleCase(status)}</span>;
+}
+
+function ApplicationCard({ app, deletingId, onDelete, onOpenDetails, onEdit }) {
+  const isDeleting = deletingId === app.application_id;
+
   return (
     <article
       className="app-card"
       tabIndex={0}
       role="button"
-      aria-label={`Open ${app.title} at ${app.company}`}
+      aria-label={`Open ${app.job_title} at ${app.company}`}
       onClick={() => onOpenDetails(app)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onOpenDetails(app);
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") onOpenDetails(app);
       }}
     >
       <div className="app-card-header">
-        <h3 className="app-title">{app.title}</h3>
-        <StatusPill status={app.status} />
+        <h3 className="app-title">{app.job_title}</h3>
+        <StatusPill status={app.job_status} />
       </div>
 
       <div className="app-meta">
-        {app.company} • {app.location}
+        {app.company} • {app.job_location}
       </div>
 
-      <div className="app-line">Next: {app.next}</div>
-      <div className="app-line">
-        Docs: {app.docs} • Contacts: {app.contacts}
-      </div>
+      <div className="app-line">{buildApplicationSummary(app)}</div>
+      <div className="app-line">{buildApplicationDetail(app)}</div>
 
-      <div className="app-actions" onClick={(e) => e.stopPropagation()}>
+      <div className="app-actions" onClick={(event) => event.stopPropagation()}>
         <button className="ghost-btn" type="button" onClick={() => onOpenDetails(app)}>
           View
         </button>
         <button className="ghost-btn" type="button" onClick={onEdit}>
           Edit
         </button>
-        <button className="danger-btn" type="button" onClick={() => onDelete(app.id)}>
-          Delete
+        <button className="danger-btn" type="button" disabled={isDeleting} onClick={() => onDelete(app.application_id)}>
+          {isDeleting ? "Deleting..." : "Delete"}
         </button>
       </div>
     </article>
   );
 }
 
-export default function Dashboard({ onLogout, onNavigate }) {
-  const [applications, setApplications] = useState(SEED_APPLICATIONS);
+export default function Dashboard({
+  applications,
+  applicationsError,
+  applicationsStatus,
+  onDeleteApplication,
+  onLogout,
+  onNavigate,
+}) {
   const [reminders, setReminders] = useState(SEED_REMINDERS);
-
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [viewMode, setViewMode] = useState("cards");
+  const [deleteError, setDeleteError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
 
-  const metrics = useMemo(() => {
-    return {
-      totalApplications: applications.length,
-      activeContacts: applications.reduce((sum, a) => sum + (a.contacts || 0), 0),
-      setReminders: reminders.length,
-    };
-  }, [applications, reminders]);
+  const metrics = useMemo(() => ({
+    totalApplications: applications.length,
+    activeApplications: applications.filter((application) =>
+      !["rejected", "offer"].includes(normalize(application.job_status)),
+    ).length,
+    setReminders: reminders.length,
+  }), [applications, reminders]);
 
   const filteredApplications = useMemo(() => {
     const q = normalize(query);
 
-    let list = applications.filter((a) => {
+    let list = applications.filter((application) => {
       const matchesQuery =
         !q ||
-        normalize(a.title).includes(q) ||
-        normalize(a.company).includes(q) ||
-        normalize(a.location).includes(q);
+        normalize(application.job_title).includes(q) ||
+        normalize(application.company).includes(q) ||
+        normalize(application.job_location).includes(q);
 
-      const matchesStatus = statusFilter === "all" ? true : normalize(a.status) === statusFilter;
+      const matchesStatus =
+        statusFilter === "all" ? true : normalize(application.job_status) === statusFilter;
 
       return matchesQuery && matchesStatus;
     });
 
-    // With no createdAt yet, seed order represents "Newest".
-    if (sortBy === "oldest") list = [...list].reverse();
-    if (sortBy === "company") list = [...list].sort((x, y) => x.company.localeCompare(y.company));
-    if (sortBy === "status") list = [...list].sort((x, y) => x.status.localeCompare(y.status));
+    if (sortBy === "oldest") {
+      list = [...list].sort((left, right) => left.application_id - right.application_id);
+    }
+
+    if (sortBy === "company") {
+      list = [...list].sort((left, right) => left.company.localeCompare(right.company));
+    }
+
+    if (sortBy === "status") {
+      list = [...list].sort((left, right) => left.job_status.localeCompare(right.job_status));
+    }
 
     return list;
   }, [applications, query, statusFilter, sortBy]);
 
-  function handleAddApplication() {
-    onNavigate?.("applications");
+  async function handleDelete(applicationId) {
+    setDeleteError("");
+    setDeletingId(applicationId);
+
+    try {
+      await onDeleteApplication?.(applicationId);
+      setReminders((prev) => prev.filter((reminder) => reminder.applicationId !== applicationId));
+    } catch (error) {
+      setDeleteError(error?.message || "Unable to delete application.");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
-  function handleOpenDetails(app) {
-    // Prototype: detailed job view becomes a route later.
-    window.alert(`Detailed Job View (prototype)\n\n${app.title}\n${app.company} • ${app.location}`);
+  function handleOpenDetails(application) {
+    window.alert(
+      `Detailed Job View (prototype)\n\n${application.job_title}\n${application.company} • ${application.job_location}`,
+    );
   }
 
-  function handleDelete(appId) {
-    setApplications((prev) => prev.filter((a) => a.id !== appId));
-    setReminders((prev) => prev.filter((r) => r.applicationId !== appId));
-  }
-
-  function handleRefresh() {
-    setApplications(SEED_APPLICATIONS);
-    setReminders(SEED_REMINDERS);
+  function handleResetView() {
     setQuery("");
     setStatusFilter("all");
     setSortBy("newest");
     setViewMode("cards");
+    setDeleteError("");
   }
 
   const iconBtnInline = { lineHeight: 0 };
   const iconSvgInline = { display: "block" };
+  const isLoading = applicationsStatus === "loading";
+  const hasLoadError = applicationsStatus === "error";
 
   return (
     <>
@@ -286,8 +290,8 @@ export default function Dashboard({ onLogout, onNavigate }) {
           </div>
 
           <div className="metric-card">
-            <div className="metric-label">Active Contacts</div>
-            <div className="metric-value">{metrics.activeContacts}</div>
+            <div className="metric-label">Active Applications</div>
+            <div className="metric-value">{metrics.activeApplications}</div>
           </div>
 
           <div className="metric-card">
@@ -302,7 +306,7 @@ export default function Dashboard({ onLogout, onNavigate }) {
               <input
                 type="search"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search company, title, location..."
                 aria-label="Search"
               />
@@ -311,7 +315,7 @@ export default function Dashboard({ onLogout, onNavigate }) {
             <div className="control">
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(event) => setStatusFilter(event.target.value)}
                 aria-label="Status filter"
               >
                 <option value="all">Status: All</option>
@@ -323,14 +327,14 @@ export default function Dashboard({ onLogout, onNavigate }) {
               </select>
             </div>
 
-            <button className="primary-btn" type="button" onClick={handleAddApplication}>
+            <button className="primary-btn" type="button" onClick={() => onNavigate?.("applications")}>
               + Add Application
             </button>
           </div>
 
           <div className="controls-row controls-row--secondary">
             <div className="control">
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sort">
+              <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} aria-label="Sort">
                 <option value="newest">Sort: Newest</option>
                 <option value="oldest">Oldest</option>
                 <option value="company">Company</option>
@@ -339,7 +343,7 @@ export default function Dashboard({ onLogout, onNavigate }) {
             </div>
 
             <div className="control">
-              <select value={viewMode} onChange={(e) => setViewMode(e.target.value)} aria-label="View">
+              <select value={viewMode} onChange={(event) => setViewMode(event.target.value)} aria-label="View">
                 <option value="cards">View: Cards</option>
                 <option value="table" disabled>
                   Table (later)
@@ -357,12 +361,15 @@ export default function Dashboard({ onLogout, onNavigate }) {
             </div>
 
             <div className="session-actions" aria-label="Session actions">
-              <button className="ghost-btn" type="button" onClick={handleRefresh}>
-                Refresh
+              <button className="ghost-btn" type="button" onClick={handleResetView}>
+                Reset View
               </button>
             </div>
           </div>
         </section>
+
+        {deleteError ? <div className="form-error">{deleteError}</div> : null}
+        {hasLoadError ? <div className="form-error">{applicationsError}</div> : null}
 
         <section className="content" aria-label="Dashboard content">
           <section aria-label="Job applications">
@@ -381,15 +388,21 @@ export default function Dashboard({ onLogout, onNavigate }) {
                 <div className="empty-title">Table view is coming later.</div>
                 <div className="empty-subtitle">For now, switch back to Cards.</div>
               </div>
+            ) : isLoading ? (
+              <div className="empty-state">
+                <div className="empty-title">Loading applications...</div>
+                <div className="empty-subtitle">Fetching your saved jobs from the backend.</div>
+              </div>
             ) : filteredApplications.length ? (
               <div className="cards">
-                {filteredApplications.map((app) => (
+                {filteredApplications.map((application) => (
                   <ApplicationCard
-                    key={app.id}
-                    app={app}
-                    onOpenDetails={handleOpenDetails}
+                    key={application.application_id}
+                    app={application}
+                    deletingId={deletingId}
                     onDelete={handleDelete}
                     onEdit={() => onNavigate?.("applications")}
+                    onOpenDetails={handleOpenDetails}
                   />
                 ))}
               </div>
@@ -410,10 +423,10 @@ export default function Dashboard({ onLogout, onNavigate }) {
               </div>
             ) : (
               <ul className="reminder-list">
-                {reminders.map((r) => (
-                  <li className="reminder-item" key={r.id}>
-                    <span className="reminder-date">{r.date}</span>
-                    {r.text}
+                {reminders.map((reminder) => (
+                  <li className="reminder-item" key={reminder.id}>
+                    <span className="reminder-date">{reminder.date}</span>
+                    {reminder.text}
                   </li>
                 ))}
               </ul>

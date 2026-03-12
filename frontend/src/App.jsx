@@ -5,42 +5,91 @@ import Applications from "./pages/applications";
 import Reminders from "./pages/reminders";
 import Contacts from "./pages/contacts";
 import Documents from "./pages/documents";
+import { getStoredToken, getStoredUserEmail, parseApiResponse } from "./lib/api";
+import {
+  createApplication,
+  deleteApplication,
+  fetchApplications,
+  updateApplication,
+} from "./lib/applicationsApi";
 
 export default function App() {
   const [authStatus, setAuthStatus] = useState("loading");
   const [currentPage, setCurrentPage] = useState("dashboard");
-  // loading | authenticated | unauthenticated
+  const [userEmail, setUserEmail] = useState(getStoredUserEmail());
+  const [applications, setApplications] = useState([]);
+  const [applicationsStatus, setApplicationsStatus] = useState("idle");
+  const [applicationsError, setApplicationsError] = useState("");
 
   useEffect(() => {
     async function checkAuth() {
-      const token = localStorage.getItem("token");
+      const token = getStoredToken();
       if (!token) {
         setAuthStatus("unauthenticated");
+        setUserEmail("");
         return;
       }
 
       try {
-        const res = await fetch("/api/auth/me", {
+        const response = await fetch("/api/auth/me", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
+        const data = await parseApiResponse(response);
 
-        if (res.ok) {
+        if (response.ok && data.email) {
+          setUserEmail(data.email);
+          localStorage.setItem("userEmail", data.email);
           setAuthStatus("authenticated");
-        } else {
-          setAuthStatus("unauthenticated");
+          return;
         }
       } catch {
-        setAuthStatus("unauthenticated");
+        // Falls through to unauthenticated state.
       }
+
+      setAuthStatus("unauthenticated");
+      setUserEmail("");
     }
 
     checkAuth();
   }, []);
 
+  useEffect(() => {
+    if (authStatus !== "authenticated") {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadApplications() {
+      setApplicationsStatus("loading");
+      setApplicationsError("");
+
+      try {
+        const nextApplications = await fetchApplications();
+        if (!cancelled) {
+          setApplications(nextApplications);
+          setApplicationsStatus("ready");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setApplications([]);
+          setApplicationsStatus("error");
+          setApplicationsError(error?.message || "Unable to load applications.");
+        }
+      }
+    }
+
+    loadApplications();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authStatus]);
+
   if (authStatus === "loading") {
-    return null; // or loading spinner
+    return null;
   }
 
   if (authStatus === "unauthenticated") {
@@ -48,21 +97,61 @@ export default function App() {
       <Login
         onLoginSuccess={() => {
           setCurrentPage("dashboard");
+          setUserEmail(getStoredUserEmail());
           setAuthStatus("authenticated");
         }}
       />
     );
   }
 
-  const handleLogout = () => {
+  async function handleCreateApplication(payload) {
+    const createdApplication = await createApplication(payload);
+    setApplications((prev) => [createdApplication, ...prev]);
+    return createdApplication;
+  }
+
+  async function handleUpdateApplication(applicationId, payload) {
+    const updatedApplication = await updateApplication(applicationId, payload);
+    setApplications((prev) =>
+      prev.map((application) =>
+        application.application_id === applicationId ? updatedApplication : application,
+      ),
+    );
+    return updatedApplication;
+  }
+
+  async function handleDeleteApplication(applicationId) {
+    await deleteApplication(applicationId);
+    setApplications((prev) =>
+      prev.filter((application) => application.application_id !== applicationId),
+    );
+  }
+
+  function handleLogout() {
     localStorage.removeItem("token");
     localStorage.removeItem("userEmail");
+    setApplications([]);
+    setApplicationsStatus("idle");
+    setApplicationsError("");
+    setUserEmail("");
     setCurrentPage("dashboard");
     setAuthStatus("unauthenticated");
-  };
+  }
 
   if (currentPage === "applications") {
-    return <Applications onLogout={handleLogout} onNavigate={setCurrentPage} />;
+    return (
+      <Applications
+        applications={applications}
+        applicationsError={applicationsError}
+        applicationsStatus={applicationsStatus}
+        onCreateApplication={handleCreateApplication}
+        onDeleteApplication={handleDeleteApplication}
+        onLogout={handleLogout}
+        onNavigate={setCurrentPage}
+        onUpdateApplication={handleUpdateApplication}
+        userEmail={userEmail}
+      />
+    );
   }
 
   if (currentPage === "reminders") {
@@ -77,5 +166,14 @@ export default function App() {
     return <Documents onLogout={handleLogout} onNavigate={setCurrentPage} />;
   }
 
-  return <Dashboard onLogout={handleLogout} onNavigate={setCurrentPage} />;
+  return (
+    <Dashboard
+      applications={applications}
+      applicationsError={applicationsError}
+      applicationsStatus={applicationsStatus}
+      onDeleteApplication={handleDeleteApplication}
+      onLogout={handleLogout}
+      onNavigate={setCurrentPage}
+    />
+  );
 }
