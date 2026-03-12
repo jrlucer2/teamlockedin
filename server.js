@@ -61,7 +61,7 @@ function parseOptionalSalary(value) {
   return Number.isFinite(numericValue) ? numericValue : Number.NaN;
 }
 
-function validateApplicationPayload(payload) {
+function validateApplicationPayload(payload, rawBody = {}) {
   const errors = [];
 
   if (!payload.job_title) errors.push('Job title is required.');
@@ -86,6 +86,10 @@ function validateApplicationPayload(payload) {
     errors.push('Salary must be numeric.');
   }
 
+  if (rawBody.salary_hourly !== undefined && typeof rawBody.salary_hourly !== 'boolean') {
+    errors.push('salary_hourly must be a boolean.');
+  }
+
   if (payload.job_url) {
     try {
       new URL(payload.job_url);
@@ -108,7 +112,7 @@ function toApplicationRecord(body, email) {
     closing_date: normalizeOptionalDate(body.closing_date),
     job_status: String(body.job_status || '').trim(),
     job_salary: parseOptionalSalary(body.job_salary),
-    salary_hourly: Boolean(body.salary_hourly),
+    salary_hourly: body.salary_hourly === undefined ? false : body.salary_hourly,
     job_url: normalizeOptionalString(body.job_url),
     job_description: normalizeOptionalString(body.job_description),
     application_notes: normalizeOptionalString(body.application_notes),
@@ -127,7 +131,7 @@ async function authenticateToken(req, res, next) {
 
   jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
     if (err) {
-      return res.status(403).json({ message: 'Invalid token.' });
+      return res.status(401).json({ message: 'Invalid token.' });
     }
 
     try {
@@ -140,10 +144,14 @@ async function authenticateToken(req, res, next) {
         );
 
         if (rows.length === 0) {
-          return res.status(403).json({ message: 'Account not found or deactivated.' });
+          return res.status(401).json({ message: 'Account not found or deactivated.' });
         }
 
-        req.user = decoded;
+        req.user = {
+          ...decoded,
+          email: normalizedEmail,
+          userId: decoded.userId || normalizedEmail,
+        };
         next();
       } finally {
         await connection.end();
@@ -240,7 +248,7 @@ app.post('/api/login', async (req, res) => {
       }
 
       const token = jwt.sign(
-        { email: user.email },
+        { email: user.email, userId: user.email },
         process.env.JWT_SECRET,
         { expiresIn: '1h' },
       );
@@ -314,15 +322,9 @@ app.get('/api/jobs', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/jobs', authenticateToken, async (req, res) => {
-  const tokenEmail = normalizeEmail(req.user.email);
-  const requestEmail = normalizeEmail(req.body.email);
-
-  if (requestEmail && requestEmail !== tokenEmail) {
-    return res.status(403).json({ message: 'You can only create applications for your own account.' });
-  }
-
-  const application = toApplicationRecord(req.body, tokenEmail);
-  const validationErrors = validateApplicationPayload(application);
+  const userId = normalizeEmail(req.user.userId || req.user.email);
+  const application = toApplicationRecord(req.body, userId);
+  const validationErrors = validateApplicationPayload(application, req.body);
   if (validationErrors.length > 0) {
     return res.status(400).json({ message: validationErrors[0], errors: validationErrors });
   }
@@ -363,11 +365,14 @@ app.post('/api/jobs', authenticateToken, async (req, res) => {
         ],
       );
 
+      const createdJob = {
+        application_id: result.insertId,
+        ...application,
+      };
+
       res.status(201).json({
-        application: {
-          application_id: result.insertId,
-          ...application,
-        },
+        job: createdJob,
+        application: createdJob,
       });
     } finally {
       await connection.end();
@@ -387,7 +392,7 @@ app.put('/api/jobs/:applicationId', authenticateToken, async (req, res) => {
   }
 
   const application = toApplicationRecord(req.body, email);
-  const validationErrors = validateApplicationPayload(application);
+  const validationErrors = validateApplicationPayload(application, req.body);
   if (validationErrors.length > 0) {
     return res.status(400).json({ message: validationErrors[0], errors: validationErrors });
   }

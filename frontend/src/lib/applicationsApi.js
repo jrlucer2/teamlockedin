@@ -29,7 +29,7 @@ export async function createApplication(payload) {
     body: JSON.stringify(payload),
   });
 
-  return data.application;
+  return data.job || data.application;
 }
 
 export async function updateApplication(applicationId, payload) {
@@ -41,7 +41,7 @@ export async function updateApplication(applicationId, payload) {
     body: JSON.stringify(payload),
   });
 
-  return data.application;
+  return data.job || data.application;
 }
 
 export async function deleteApplication(applicationId) {
