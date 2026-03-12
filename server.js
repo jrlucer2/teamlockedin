@@ -296,7 +296,7 @@ app.get('/api/applications', authenticateToken, async (req, res) => {
           job_url,
           job_description,
           application_notes
-        FROM applications
+        FROM application
         WHERE LOWER(email) = ?
         ORDER BY application_id DESC`,
         [email],
@@ -308,7 +308,8 @@ app.get('/api/applications', authenticateToken, async (req, res) => {
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error retrieving applications.' });
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error retrieving applications: ${detail}` : 'Error retrieving applications.' });
   }
 });
 
@@ -330,7 +331,7 @@ app.post('/api/applications', authenticateToken, async (req, res) => {
     const connection = await createConnection();
     try {
       const [result] = await connection.execute(
-        `INSERT INTO applications (
+        `INSERT INTO application (
           email,
           job_title,
           company,
@@ -395,7 +396,7 @@ app.put('/api/applications/:applicationId', authenticateToken, async (req, res) 
     const connection = await createConnection();
     try {
       const [result] = await connection.execute(
-        `UPDATE applications
+        `UPDATE application
         SET
           job_title = ?,
           company = ?,
@@ -459,7 +460,7 @@ app.delete('/api/applications/:applicationId', authenticateToken, async (req, re
     const connection = await createConnection();
     try {
       const [result] = await connection.execute(
-        'DELETE FROM applications WHERE application_id = ? AND LOWER(email) = ?',
+        'DELETE FROM application WHERE application_id = ? AND LOWER(email) = ?',
         [applicationId, email],
       );
 
