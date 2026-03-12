@@ -107,6 +107,7 @@ export default function Applications({
   applicationsError,
   hasLoadedApplications,
   applicationsStatus,
+  initialEditingId,
   onCreateApplication,
   onDeleteApplication,
   onLogout,
@@ -127,6 +128,20 @@ export default function Applications({
       setIsFormOpen(true);
     }
   }, [applications.length, applicationsStatus]);
+
+  useEffect(() => {
+    if (!initialEditingId) {
+      return;
+    }
+
+    const applicationToEdit = applications.find(
+      (application) => application.application_id === initialEditingId,
+    );
+
+    if (applicationToEdit) {
+      editApplication(applicationToEdit);
+    }
+  }, [applications, initialEditingId]);
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));

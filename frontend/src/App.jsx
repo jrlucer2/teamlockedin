@@ -16,6 +16,7 @@ import {
 export default function App() {
   const [authStatus, setAuthStatus] = useState("loading");
   const [currentPage, setCurrentPage] = useState("dashboard");
+  const [pageState, setPageState] = useState({ applicationsEditingId: null });
   const [userEmail, setUserEmail] = useState(getStoredUserEmail());
   const [applications, setApplications] = useState([]);
   const [applicationsStatus, setApplicationsStatus] = useState("idle");
@@ -131,6 +132,13 @@ export default function App() {
     );
   }
 
+  function handleNavigate(page, options = {}) {
+    setCurrentPage(page);
+    setPageState({
+      applicationsEditingId: page === "applications" ? options.editingId ?? null : null,
+    });
+  }
+
   function handleLogout() {
     localStorage.removeItem("token");
     localStorage.removeItem("userEmail");
@@ -140,6 +148,7 @@ export default function App() {
     setHasLoadedApplications(false);
     setUserEmail("");
     setCurrentPage("dashboard");
+    setPageState({ applicationsEditingId: null });
     setAuthStatus("unauthenticated");
   }
 
@@ -153,23 +162,24 @@ export default function App() {
         onCreateApplication={handleCreateApplication}
         onDeleteApplication={handleDeleteApplication}
         onLogout={handleLogout}
-        onNavigate={setCurrentPage}
+        onNavigate={handleNavigate}
         onUpdateApplication={handleUpdateApplication}
         userEmail={userEmail}
+        initialEditingId={pageState.applicationsEditingId}
       />
     );
   }
 
   if (currentPage === "reminders") {
-    return <Reminders onLogout={handleLogout} onNavigate={setCurrentPage} />;
+    return <Reminders onLogout={handleLogout} onNavigate={handleNavigate} />;
   }
 
   if (currentPage === "contacts") {
-    return <Contacts onLogout={handleLogout} onNavigate={setCurrentPage} />;
+    return <Contacts onLogout={handleLogout} onNavigate={handleNavigate} />;
   }
 
   if (currentPage === "documents") {
-    return <Documents onLogout={handleLogout} onNavigate={setCurrentPage} />;
+    return <Documents onLogout={handleLogout} onNavigate={handleNavigate} />;
   }
 
   return (
@@ -180,7 +190,7 @@ export default function App() {
       applicationsStatus={applicationsStatus}
       onDeleteApplication={handleDeleteApplication}
       onLogout={handleLogout}
-      onNavigate={setCurrentPage}
+      onNavigate={handleNavigate}
       onUpdateApplication={handleUpdateApplication}
     />
   );

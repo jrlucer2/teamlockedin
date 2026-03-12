@@ -658,6 +658,20 @@ a { color: inherit; }
   word-break: break-word;
 }
 
+.status-pill-button {
+  cursor: pointer;
+}
+
+.dashboard-inline-note {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  color: rgba(230, 237, 247, 0.9);
+  font-size: 13px;
+}
+
 .dashboard-status-field {
   margin-top: 16px;
 }

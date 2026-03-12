@@ -94,12 +94,23 @@ function buildUpdatePayload(application, jobStatus) {
   };
 }
 
-function StatusPill({ status }) {
+function StatusPill({ status, onClick }) {
   const normalized = normalize(status).replace(/\s+/g, "-");
-  return <span className={`status-pill status-${normalized}`}>{toTitleCase(status)}</span>;
+  return (
+    <button
+      className={`status-pill status-${normalized} status-pill-button`}
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.();
+      }}
+    >
+      {toTitleCase(status)}
+    </button>
+  );
 }
 
-function ApplicationCard({ app, deletingId, onDelete, onOpenDetails, onEdit }) {
+function ApplicationCard({ app, deletingId, onDelete, onOpenDetails, onOpenStatusEditor, onEdit }) {
   const isDeleting = deletingId === app.application_id;
 
   return (
@@ -115,7 +126,7 @@ function ApplicationCard({ app, deletingId, onDelete, onOpenDetails, onEdit }) {
     >
       <div className="app-card-header">
         <h3 className="app-title">{app.job_title}</h3>
-        <StatusPill status={app.job_status} />
+        <StatusPill status={app.job_status} onClick={() => onOpenStatusEditor(app)} />
       </div>
 
       <div className="app-meta">
@@ -153,6 +164,7 @@ function ApplicationDetailModal({
   application,
   error,
   isSaving,
+  isStatusFocused,
   onClose,
   onSave,
   statusValue,
@@ -185,6 +197,12 @@ function ApplicationDetailModal({
 
         <div className="dashboard-modal-body">
           {error ? <div className="form-error">{error}</div> : null}
+
+          {isStatusFocused ? (
+            <div className="dashboard-inline-note">
+              Update the application status and save to apply the change immediately on the dashboard.
+            </div>
+          ) : null}
 
           <div className="dashboard-detail-grid">
             <DetailRow label="Position Type" value={toTitleCase(application.position_type)} />
@@ -257,6 +275,7 @@ export default function Dashboard({
   const [detailStatus, setDetailStatus] = useState("");
   const [detailError, setDetailError] = useState("");
   const [isSavingDetail, setIsSavingDetail] = useState(false);
+  const [detailMode, setDetailMode] = useState("view");
 
   useEffect(() => {
     if (!selectedApplication) return;
@@ -270,6 +289,7 @@ export default function Dashboard({
       setDetailStatus("");
       setDetailError("");
       setIsSavingDetail(false);
+      setDetailMode("view");
       return;
     }
 
@@ -334,6 +354,14 @@ export default function Dashboard({
     setSelectedApplication(application);
     setDetailStatus(application.job_status);
     setDetailError("");
+    setDetailMode("view");
+  }
+
+  function handleOpenStatusEditor(application) {
+    setSelectedApplication(application);
+    setDetailStatus(application.job_status);
+    setDetailError("");
+    setDetailMode("status");
   }
 
   function handleCloseDetails() {
@@ -341,6 +369,7 @@ export default function Dashboard({
     setSelectedApplication(null);
     setDetailStatus("");
     setDetailError("");
+    setDetailMode("view");
   }
 
   async function handleSaveStatus() {
@@ -586,8 +615,9 @@ export default function Dashboard({
                     app={application}
                     deletingId={deletingId}
                     onDelete={handleDelete}
-                    onEdit={() => onNavigate?.("applications")}
+                    onEdit={() => onNavigate?.("applications", { editingId: application.application_id })}
                     onOpenDetails={handleOpenDetails}
+                    onOpenStatusEditor={handleOpenStatusEditor}
                   />
                 ))}
               </div>
@@ -626,10 +656,11 @@ export default function Dashboard({
         <ApplicationDetailModal
           application={selectedApplication}
           error={detailError}
-          isSaving={isSavingDetail}
-          onClose={handleCloseDetails}
-          onSave={handleSaveStatus}
-          onStatusChange={setDetailStatus}
+        isSaving={isSavingDetail}
+        isStatusFocused={detailMode === "status"}
+        onClose={handleCloseDetails}
+        onSave={handleSaveStatus}
+        onStatusChange={setDetailStatus}
           statusValue={detailStatus}
         />
       ) : null}
