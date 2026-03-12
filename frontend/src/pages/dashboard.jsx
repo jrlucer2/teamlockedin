@@ -299,8 +299,8 @@ export default function Dashboard({
 
   const metrics = useMemo(() => ({
     totalApplications: applications.length,
-    activeApplications: applications.filter((application) =>
-      !["rejected", "offer"].includes(normalize(application.job_status)),
+    activeInterviews: applications.filter(
+      (application) => normalize(application.job_status) === "interviewing",
     ).length,
     setReminders: reminders.length,
   }), [applications, reminders]);
@@ -504,8 +504,8 @@ export default function Dashboard({
           </div>
 
           <div className="metric-card">
-            <div className="metric-label">Active Applications</div>
-            <div className="metric-value">{metrics.activeApplications}</div>
+            <div className="metric-label">Active Interviews</div>
+            <div className="metric-value">{metrics.activeInterviews}</div>
           </div>
 
           <div className="metric-card">
