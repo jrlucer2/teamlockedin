@@ -105,6 +105,7 @@ function FieldError({ message }) {
 export default function Applications({
   applications,
   applicationsError,
+  hasLoadedApplications,
   applicationsStatus,
   onCreateApplication,
   onDeleteApplication,
@@ -229,7 +230,8 @@ export default function Applications({
   }
 
   const isLoading = applicationsStatus === "loading";
-  const hasLoadError = applicationsStatus === "error";
+  const hasLoadError =
+    hasLoadedApplications && applicationsStatus === "error" && Boolean(applicationsError);
 
   return (
     <>

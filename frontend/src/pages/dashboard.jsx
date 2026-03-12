@@ -106,6 +106,7 @@ function ApplicationCard({ app, deletingId, onDelete, onOpenDetails, onEdit }) {
 export default function Dashboard({
   applications,
   applicationsError,
+  hasLoadedApplications,
   applicationsStatus,
   onDeleteApplication,
   onLogout,
@@ -189,7 +190,8 @@ export default function Dashboard({
   const iconBtnInline = { lineHeight: 0 };
   const iconSvgInline = { display: "block" };
   const isLoading = applicationsStatus === "loading";
-  const hasLoadError = applicationsStatus === "error";
+  const hasLoadError =
+    hasLoadedApplications && applicationsStatus === "error" && Boolean(applicationsError);
 
   return (
     <>

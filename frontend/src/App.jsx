@@ -20,6 +20,7 @@ export default function App() {
   const [applications, setApplications] = useState([]);
   const [applicationsStatus, setApplicationsStatus] = useState("idle");
   const [applicationsError, setApplicationsError] = useState("");
+  const [hasLoadedApplications, setHasLoadedApplications] = useState(false);
 
   useEffect(() => {
     async function checkAuth() {
@@ -65,18 +66,21 @@ export default function App() {
     async function loadApplications() {
       setApplicationsStatus("loading");
       setApplicationsError("");
+      setHasLoadedApplications(false);
 
       try {
         const nextApplications = await fetchApplications();
         if (!cancelled) {
           setApplications(nextApplications);
           setApplicationsStatus("ready");
+          setHasLoadedApplications(true);
         }
       } catch (error) {
         if (!cancelled) {
           setApplications([]);
           setApplicationsStatus("error");
           setApplicationsError(error?.message || "Unable to load applications.");
+          setHasLoadedApplications(true);
         }
       }
     }
@@ -133,6 +137,7 @@ export default function App() {
     setApplications([]);
     setApplicationsStatus("idle");
     setApplicationsError("");
+    setHasLoadedApplications(false);
     setUserEmail("");
     setCurrentPage("dashboard");
     setAuthStatus("unauthenticated");
@@ -143,6 +148,7 @@ export default function App() {
       <Applications
         applications={applications}
         applicationsError={applicationsError}
+        hasLoadedApplications={hasLoadedApplications}
         applicationsStatus={applicationsStatus}
         onCreateApplication={handleCreateApplication}
         onDeleteApplication={handleDeleteApplication}
@@ -170,6 +176,7 @@ export default function App() {
     <Dashboard
       applications={applications}
       applicationsError={applicationsError}
+      hasLoadedApplications={hasLoadedApplications}
       applicationsStatus={applicationsStatus}
       onDeleteApplication={handleDeleteApplication}
       onLogout={handleLogout}
