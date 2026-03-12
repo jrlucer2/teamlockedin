@@ -181,6 +181,7 @@ export default function App() {
       onDeleteApplication={handleDeleteApplication}
       onLogout={handleLogout}
       onNavigate={setCurrentPage}
+      onUpdateApplication={handleUpdateApplication}
     />
   );
 }
