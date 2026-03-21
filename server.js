@@ -665,6 +665,185 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/documents/:documentId/file', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const documentId = Number(req.params.documentId);
+
+  if (!Number.isInteger(documentId) || documentId <= 0) {
+    return res.status(400).json({ message: 'Invalid document id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        'SELECT file_path, original_filename FROM document WHERE document_id = ? AND LOWER(email) = ?',
+        [documentId, email],
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({ message: 'Document not found or access denied.' });
+      }
+
+      const { file_path, original_filename } = rows[0];
+      const absolutePath = path.resolve(path.join(__dirname, file_path));
+      const uploadDir = path.resolve(path.join(__dirname, 'uploads', 'documents'));
+
+      if (!absolutePath.startsWith(uploadDir + path.sep)) {
+        return res.status(400).json({ message: 'Invalid file path.' });
+      }
+
+      const safe_filename = original_filename.replace(/["\r\n]/g, '');
+      res.setHeader('Content-Disposition', `inline; filename="${safe_filename}"`);
+      res.sendFile(absolutePath);
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error retrieving file.' });
+  }
+});
+
+app.put('/api/documents/:documentId', upload.single('file'), authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const documentId = Number(req.params.documentId);
+
+  if (!Number.isInteger(documentId) || documentId <= 0) {
+    return res.status(400).json({ message: 'Invalid document id.' });
+  }
+
+  const title = String(req.body.title || '').trim();
+  const document_type = String(req.body.document_type || '').trim();
+  const upload_date = String(req.body.upload_date || '').trim();
+  const notes = normalizeOptionalString(req.body.notes);
+  const application_id = req.body.application_id ? Number(req.body.application_id) : null;
+
+  if (!title) return res.status(400).json({ message: 'Document title is required.' });
+  if (!document_type) return res.status(400).json({ message: 'Document type is required.' });
+  if (!upload_date || Number.isNaN(Date.parse(upload_date))) {
+    return res.status(400).json({ message: 'A valid upload date is required.' });
+  }
+  if (application_id !== null && (!Number.isInteger(application_id) || application_id <= 0)) {
+    return res.status(400).json({ message: 'Invalid application id.' });
+  }
+
+  const normalized_date = new Date(upload_date).toISOString().slice(0, 10);
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [existing] = await connection.execute(
+        'SELECT file_path, original_filename, stored_filename FROM document WHERE document_id = ? AND LOWER(email) = ?',
+        [documentId, email],
+      );
+
+      if (existing.length === 0) {
+        return res.status(404).json({ message: 'Document not found or access denied.' });
+      }
+
+      if (application_id !== null) {
+        const [ownerCheck] = await connection.execute(
+          'SELECT application_id FROM application WHERE application_id = ? AND LOWER(email) = ?',
+          [application_id, email],
+        );
+        if (ownerCheck.length === 0) {
+          return res.status(403).json({ message: 'Application not found or access denied.' });
+        }
+      }
+
+      let new_original_filename = existing[0].original_filename;
+      let new_stored_filename = existing[0].stored_filename;
+      let new_file_path = existing[0].file_path;
+      let new_file_size = null;
+
+      if (req.file) {
+        new_original_filename = req.file.originalname;
+        new_stored_filename = req.file.filename;
+        new_file_path = path.join('uploads', 'documents', req.file.filename);
+        new_file_size = req.file.size;
+      }
+
+      const [result] = await connection.execute(
+        `UPDATE document
+         SET title = ?, document_type = ?, original_filename = ?, stored_filename = ?,
+             file_path = ?, file_size = COALESCE(?, file_size), upload_date = ?, notes = ?
+         WHERE document_id = ? AND LOWER(email) = ?`,
+        [title, document_type, new_original_filename, new_stored_filename,
+         new_file_path, new_file_size, normalized_date, notes, documentId, email],
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: 'Document not found.' });
+      }
+
+      if (req.file) {
+        fs.promises.unlink(path.join(__dirname, existing[0].file_path)).catch(() => {});
+      }
+
+      await connection.execute(
+        'DELETE FROM application_document WHERE document_id = ?',
+        [documentId],
+      );
+
+      if (application_id !== null) {
+        await connection.execute(
+          'INSERT INTO application_document (application_id, document_id) VALUES (?, ?)',
+          [application_id, documentId],
+        );
+      }
+
+      res.status(200).json({ message: 'Document updated successfully.' });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error updating document.' });
+  }
+});
+
+app.delete('/api/documents/:documentId', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const documentId = Number(req.params.documentId);
+
+  if (!Number.isInteger(documentId) || documentId <= 0) {
+    return res.status(400).json({ message: 'Invalid document id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        'SELECT file_path FROM document WHERE document_id = ? AND LOWER(email) = ?',
+        [documentId, email],
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({ message: 'Document not found or access denied.' });
+      }
+
+      await connection.execute(
+        'DELETE FROM document WHERE document_id = ? AND LOWER(email) = ?',
+        [documentId, email],
+      );
+
+      const deletePath = path.resolve(path.join(__dirname, rows[0].file_path));
+      const uploadDir = path.resolve(path.join(__dirname, 'uploads', 'documents'));
+      if (deletePath.startsWith(uploadDir + path.sep)) {
+        fs.promises.unlink(deletePath).catch(() => {});
+      }
+
+      res.status(204).send();
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error deleting document.' });
+  }
+});
+
 if (servingReactBuild) {
   app.get('*', (req, res) => {
     res.sendFile(path.join(reactDistPath, 'index.html'));
