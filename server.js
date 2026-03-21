@@ -5,6 +5,48 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
+
+const uploadsDir = path.join(__dirname, 'uploads', 'documents');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+]);
+
+const ALLOWED_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.txt']);
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const base = path.basename(file.originalname, ext)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    const timestamp = Date.now();
+    cb(null, `${base}_${timestamp}${ext}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!ALLOWED_MIME_TYPES.has(file.mimetype) || !ALLOWED_EXTENSIONS.has(ext)) {
+      return cb(new Error('Only PDF, DOC, DOCX, and TXT files are allowed.'));
+    }
+    cb(null, true);
+  },
+});
 
 const app = express();
 const port = 3000;
