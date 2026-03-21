@@ -548,6 +548,123 @@ app.delete('/api/jobs/:applicationId', authenticateToken, async (req, res) => {
   }
 });
 
+app.post('/api/documents', upload.single('file'), authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+
+  if (!req.file) {
+    return res.status(400).json({ message: 'A file is required.' });
+  }
+
+  const title = String(req.body.title || '').trim();
+  const document_type = String(req.body.document_type || '').trim();
+  const upload_date = String(req.body.upload_date || '').trim();
+  const notes = normalizeOptionalString(req.body.notes);
+  const application_id = req.body.application_id ? Number(req.body.application_id) : null;
+
+  if (!title) return res.status(400).json({ message: 'Document title is required.' });
+  if (!document_type) return res.status(400).json({ message: 'Document type is required.' });
+  if (!upload_date || Number.isNaN(Date.parse(upload_date))) {
+    return res.status(400).json({ message: 'A valid upload date is required.' });
+  }
+  if (application_id !== null && (!Number.isInteger(application_id) || application_id <= 0)) {
+    return res.status(400).json({ message: 'Invalid application id.' });
+  }
+
+  const original_filename = req.file.originalname;
+  const stored_filename = req.file.filename;
+  const file_path = path.join('uploads', 'documents', req.file.filename);
+  const file_size = req.file.size;
+  const normalized_date = new Date(upload_date).toISOString().slice(0, 10);
+
+  try {
+    const connection = await createConnection();
+    try {
+      if (application_id !== null) {
+        const [ownerCheck] = await connection.execute(
+          'SELECT application_id FROM application WHERE application_id = ? AND LOWER(email) = ?',
+          [application_id, email],
+        );
+        if (ownerCheck.length === 0) {
+          return res.status(403).json({ message: 'Application not found or access denied.' });
+        }
+      }
+
+      const [result] = await connection.execute(
+        `INSERT INTO document (email, title, document_type, original_filename, stored_filename, file_path, file_size, upload_date, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [email, title, document_type, original_filename, stored_filename, file_path, file_size, normalized_date, notes],
+      );
+
+      const document_id = result.insertId;
+
+      if (application_id !== null) {
+        await connection.execute(
+          'INSERT INTO application_document (application_id, document_id) VALUES (?, ?)',
+          [application_id, document_id],
+        );
+      }
+
+      res.status(201).json({
+        document: {
+          document_id,
+          email,
+          title,
+          document_type,
+          original_filename,
+          stored_filename,
+          file_path,
+          file_size,
+          upload_date: normalized_date,
+          notes,
+          application_id: application_id ?? null,
+        },
+      });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    fs.unlink(path.join(__dirname, file_path), () => {});
+    console.error(error);
+    res.status(500).json({ message: 'Error uploading document.' });
+  }
+});
+
+app.get('/api/documents', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        `SELECT
+          d.document_id,
+          d.email,
+          d.title,
+          d.document_type,
+          d.original_filename,
+          d.file_size,
+          d.upload_date,
+          d.notes,
+          ad.application_id,
+          CONCAT(a.company, ' — ', a.job_title) AS linked_application
+        FROM document d
+        LEFT JOIN application_document ad ON d.document_id = ad.document_id
+        LEFT JOIN application a ON ad.application_id = a.application_id AND LOWER(a.email) = ?
+        WHERE LOWER(d.email) = ?
+        ORDER BY d.document_id DESC`,
+        [email, email],
+      );
+
+      res.status(200).json({ documents: rows });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error retrieving documents.' });
+  }
+});
+
 if (servingReactBuild) {
   app.get('*', (req, res) => {
     res.sendFile(path.join(reactDistPath, 'index.html'));
