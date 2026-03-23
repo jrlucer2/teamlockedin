@@ -216,6 +216,92 @@
   gap: 10px;
 }
 
+/* Multi-select dropdown */
+.multiselect {
+  position: relative;
+  width: 100%;
+}
+
+.multiselect-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.multiselect-toggle:focus {
+  border-color: rgba(90, 160, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(90, 160, 255, 0.12);
+  outline: none;
+}
+
+.multiselect-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.multiselect-arrow {
+  font-size: 10px;
+  margin-left: 8px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.multiselect-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: #0f1826;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 6px 0;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.84);
+  transition: background 0.12s;
+}
+
+.multiselect-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.multiselect-option input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: #4db8ff;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.multiselect-empty {
+  padding: 10px 14px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 13px;
+}
+
 .delete-confirm-copy {
   margin: 0;
   color: rgba(230, 237, 247, 0.88);

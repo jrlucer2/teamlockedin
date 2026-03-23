@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
+import { fetchDocumentBlob, fetchDocumentsForApplication } from "../lib/documentsApi";
 
 const SEED_REMINDERS = [
   { id: 1, date: "Feb 26", text: "Follow-up Call", applicationId: 2 },
@@ -176,8 +177,11 @@ function ApplicationDetailModal({
   error,
   isSaving,
   isStatusFocused,
+  linkedDocuments,
+  isLoadingDocs,
   onClose,
   onSave,
+  onViewDocument,
   statusValue,
   onStatusChange,
 }) {
@@ -244,6 +248,31 @@ function ApplicationDetailModal({
             <p>{application.application_notes || "No notes saved."}</p>
           </div>
 
+          <div className="dashboard-copy-block">
+            <span className="dashboard-detail-label">Linked Documents</span>
+            {isLoadingDocs ? (
+              <p className="dashboard-docs-loading">Loading documents...</p>
+            ) : !linkedDocuments || linkedDocuments.length === 0 ? (
+              <p className="dashboard-docs-empty">No documents linked to this application.</p>
+            ) : (
+              <ul className="dashboard-doc-list">
+                {linkedDocuments.map((doc) => (
+                  <li key={doc.id} className="dashboard-doc-item">
+                    <span className="dashboard-doc-type">{toTitleCase(doc.documentType)}</span>
+                    <span className="dashboard-doc-name">{doc.fileName || doc.title}</span>
+                    <button
+                      className="ghost-btn"
+                      type="button"
+                      onClick={() => onViewDocument(doc.id)}
+                    >
+                      View
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <div className="dashboard-modal-actions">
             {application.job_url ? (
               <a className="ghost-btn dashboard-modal-link" href={application.job_url} target="_blank" rel="noreferrer">
@@ -287,6 +316,8 @@ export default function Dashboard({
   const [detailError, setDetailError] = useState("");
   const [isSavingDetail, setIsSavingDetail] = useState(false);
   const [detailMode, setDetailMode] = useState("view");
+  const [linkedDocuments, setLinkedDocuments] = useState(null);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
 
   useEffect(() => {
     if (!selectedApplication) return;
@@ -366,6 +397,12 @@ export default function Dashboard({
     setDetailStatus(application.job_status);
     setDetailError("");
     setDetailMode("view");
+    setLinkedDocuments(null);
+    setIsLoadingDocs(true);
+    fetchDocumentsForApplication(application.application_id)
+      .then((docs) => setLinkedDocuments(docs))
+      .catch(() => setLinkedDocuments([]))
+      .finally(() => setIsLoadingDocs(false));
   }
 
   function handleOpenStatusEditor(application) {
@@ -373,6 +410,12 @@ export default function Dashboard({
     setDetailStatus(application.job_status);
     setDetailError("");
     setDetailMode("status");
+    setLinkedDocuments(null);
+    setIsLoadingDocs(true);
+    fetchDocumentsForApplication(application.application_id)
+      .then((docs) => setLinkedDocuments(docs))
+      .catch(() => setLinkedDocuments([]))
+      .finally(() => setIsLoadingDocs(false));
   }
 
   function handleCloseDetails() {
@@ -381,6 +424,8 @@ export default function Dashboard({
     setDetailStatus("");
     setDetailError("");
     setDetailMode("view");
+    setLinkedDocuments(null);
+    setIsLoadingDocs(false);
   }
 
   async function handleSaveStatus() {
@@ -399,6 +444,17 @@ export default function Dashboard({
       setDetailError(error?.message || "Unable to update status.");
     } finally {
       setIsSavingDetail(false);
+    }
+  }
+
+  async function handleViewDocument(documentId) {
+    try {
+      const blob = await fetchDocumentBlob(documentId);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 15000);
+    } catch (error) {
+      setDetailError(error?.message || "Could not open document.");
     }
   }
 
@@ -667,11 +723,14 @@ export default function Dashboard({
         <ApplicationDetailModal
           application={selectedApplication}
           error={detailError}
-        isSaving={isSavingDetail}
-        isStatusFocused={detailMode === "status"}
-        onClose={handleCloseDetails}
-        onSave={handleSaveStatus}
-        onStatusChange={setDetailStatus}
+          isSaving={isSavingDetail}
+          isStatusFocused={detailMode === "status"}
+          linkedDocuments={linkedDocuments}
+          isLoadingDocs={isLoadingDocs}
+          onClose={handleCloseDetails}
+          onSave={handleSaveStatus}
+          onViewDocument={handleViewDocument}
+          onStatusChange={setDetailStatus}
           statusValue={detailStatus}
         />
       ) : null}

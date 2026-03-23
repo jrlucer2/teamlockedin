@@ -16,14 +16,20 @@ async function request(path, options = {}) {
 }
 
 function mapDocument(doc) {
+  const linkedApplications = doc.linked_applications
+    ? doc.linked_applications.split("|||")
+    : [];
   return {
     id: doc.document_id,
     title: doc.title,
     documentType: doc.document_type,
     uploadDate: doc.upload_date ? String(doc.upload_date).slice(0, 10) : "",
     notes: doc.notes || "",
-    linkedApplication: doc.linked_application || "",
-    applicationId: doc.application_id ?? null,
+    applicationIds: doc.application_ids
+      ? String(doc.application_ids).split(",").map(Number)
+      : [],
+    linkedApplications,
+    linkedApplication: linkedApplications.join(", "),
     fileName: doc.original_filename || "",
     fileSize: doc.file_size || 0,
     objectUrl: null,
@@ -35,13 +41,18 @@ export async function fetchDocuments() {
   return (data.documents || []).map(mapDocument);
 }
 
+export async function fetchDocumentsForApplication(applicationId) {
+  const data = await request(`/api/documents?application_id=${applicationId}`);
+  return (data.documents || []).map(mapDocument);
+}
+
 export async function createDocument(form) {
   const formData = new FormData();
   formData.append("title", form.title);
   formData.append("document_type", form.documentType);
   formData.append("upload_date", form.uploadDate);
   if (form.notes) formData.append("notes", form.notes);
-  if (form.applicationId != null) formData.append("application_id", form.applicationId);
+  formData.append("application_ids", JSON.stringify(form.applicationIds || []));
   if (form.file) formData.append("file", form.file);
 
   const data = await request("/api/documents", {
@@ -58,7 +69,7 @@ export async function updateDocument(documentId, form) {
   formData.append("document_type", form.documentType);
   formData.append("upload_date", form.uploadDate);
   if (form.notes) formData.append("notes", form.notes);
-  if (form.applicationId != null) formData.append("application_id", form.applicationId);
+  formData.append("application_ids", JSON.stringify(form.applicationIds || []));
   if (form.file) formData.append("file", form.file);
 
   await request(`/api/documents/${documentId}`, {

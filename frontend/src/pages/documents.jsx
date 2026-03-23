@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
 import "../styles/dashboard.css";
 import "../styles/documents.css";
@@ -17,7 +17,7 @@ const INITIAL_FORM = {
   documentType: "resume",
   uploadDate: "",
   notes: "",
-  applicationId: null,
+  applicationIds: [],
   file: null,
 };
 
@@ -68,11 +68,78 @@ function DocumentModal({ title, children, onClose }) {
   );
 }
 
+function MultiSelectDropdown({ options, selected, onChange }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function toggleOption(value) {
+    if (selected.includes(value)) {
+      onChange(selected.filter((v) => v !== value));
+    } else {
+      onChange([...selected, value]);
+    }
+  }
+
+  const selectedLabels = options
+    .filter((opt) => selected.includes(opt.value))
+    .map((opt) => opt.label);
+
+  const displayText =
+    selectedLabels.length === 0
+      ? "None"
+      : selectedLabels.length === 1
+      ? selectedLabels[0]
+      : `${selectedLabels.length} applications selected`;
+
+  return (
+    <div className="multiselect" ref={containerRef}>
+      <button
+        type="button"
+        className="multiselect-toggle"
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+      >
+        <span className="multiselect-label">{displayText}</span>
+        <span className="multiselect-arrow">{isOpen ? "▲" : "▼"}</span>
+      </button>
+      {isOpen && (
+        <div className="multiselect-dropdown" role="listbox" aria-multiselectable="true">
+          {options.length === 0 ? (
+            <div className="multiselect-empty">No applications available</div>
+          ) : (
+            options.map((opt) => (
+              <label key={opt.value} className="multiselect-option">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(opt.value)}
+                  onChange={() => toggleOption(opt.value)}
+                />
+                {opt.label}
+              </label>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DocumentForm({ initial, isEditing, applications, isSaving, onSave, onCancel }) {
   const [form, setForm] = useState({
     ...initial,
     uploadDate: initial.uploadDate || todayDateString(),
-    applicationId: initial.applicationId ?? null,
+    applicationIds: initial.applicationIds ?? [],
     file: null,
   });
   const [error, setError] = useState("");
@@ -158,22 +225,17 @@ function DocumentForm({ initial, isEditing, applications, isSaving, onSave, onCa
           />
         </label>
 
-        <label className="form-field">
-          <span className="form-label">Linked Application (Optional)</span>
-          <select
-            value={form.applicationId ?? ""}
-            onChange={(event) =>
-              updateField("applicationId", event.target.value === "" ? null : Number(event.target.value))
-            }
-          >
-            <option value="">None</option>
-            {applications.map((app) => (
-              <option key={app.application_id} value={app.application_id}>
-                {app.company} — {app.job_title}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="form-field">
+          <span className="form-label">Linked Applications (Optional)</span>
+          <MultiSelectDropdown
+            options={applications.map((app) => ({
+              value: app.application_id,
+              label: `${app.company} — ${app.job_title}`,
+            }))}
+            selected={form.applicationIds}
+            onChange={(ids) => updateField("applicationIds", ids)}
+          />
+        </div>
 
         <label className="form-field form-field--full">
           <span className="form-label">Notes (Optional)</span>
@@ -314,7 +376,10 @@ export default function Documents({ onLogout, onNavigate }) {
         setDocuments((prev) => [created, ...prev]);
       } else {
         await updateDocument(payload.id, payload);
-        const linkedApp = applications.find((a) => a.application_id === payload.applicationId);
+        const linkedAppNames = (payload.applicationIds || [])
+          .map((id) => applications.find((a) => a.application_id === id))
+          .filter(Boolean)
+          .map((a) => `${a.company} — ${a.job_title}`);
         setDocuments((prev) =>
           prev.map((item) => {
             if (item.id !== payload.id) return item;
@@ -325,10 +390,9 @@ export default function Documents({ onLogout, onNavigate }) {
               documentType: payload.documentType,
               uploadDate: payload.uploadDate,
               notes: payload.notes,
-              applicationId: payload.applicationId,
-              linkedApplication: linkedApp
-                ? `${linkedApp.company} — ${linkedApp.job_title}`
-                : "",
+              applicationIds: payload.applicationIds,
+              linkedApplications: linkedAppNames,
+              linkedApplication: linkedAppNames.join(", "),
               fileName: payload.file ? payload.file.name : item.fileName,
               fileSize: payload.file ? payload.file.size : item.fileSize,
               objectUrl: payload.file ? null : item.objectUrl,
@@ -513,7 +577,7 @@ export default function Documents({ onLogout, onNavigate }) {
                 <div className="document-details-grid">
                   <div>File: {item.fileName || "No file"}</div>
                   <div>Size: {formatFileSize(item.fileSize)}</div>
-                  <div>Linked App: {item.linkedApplication || "Not linked"}</div>
+                  <div>Linked Apps: {item.linkedApplication || "Not linked"}</div>
                 </div>
 
                 {item.notes ? <p className="document-notes">{item.notes}</p> : null}

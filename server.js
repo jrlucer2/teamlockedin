@@ -559,15 +559,21 @@ app.post('/api/documents', upload.single('file'), authenticateToken, async (req,
   const document_type = String(req.body.document_type || '').trim();
   const upload_date = String(req.body.upload_date || '').trim();
   const notes = normalizeOptionalString(req.body.notes);
-  const application_id = req.body.application_id ? Number(req.body.application_id) : null;
+
+  let application_ids = [];
+  try {
+    const parsed = JSON.parse(req.body.application_ids || '[]');
+    application_ids = Array.isArray(parsed)
+      ? parsed.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+      : [];
+  } catch {
+    application_ids = [];
+  }
 
   if (!title) return res.status(400).json({ message: 'Document title is required.' });
   if (!document_type) return res.status(400).json({ message: 'Document type is required.' });
   if (!upload_date || Number.isNaN(Date.parse(upload_date))) {
     return res.status(400).json({ message: 'A valid upload date is required.' });
-  }
-  if (application_id !== null && (!Number.isInteger(application_id) || application_id <= 0)) {
-    return res.status(400).json({ message: 'Invalid application id.' });
   }
 
   const original_filename = req.file.originalname;
@@ -579,13 +585,14 @@ app.post('/api/documents', upload.single('file'), authenticateToken, async (req,
   try {
     const connection = await createConnection();
     try {
-      if (application_id !== null) {
+      if (application_ids.length > 0) {
+        const placeholders = application_ids.map(() => '?').join(', ');
         const [ownerCheck] = await connection.execute(
-          'SELECT application_id FROM application WHERE application_id = ? AND LOWER(email) = ?',
-          [application_id, email],
+          `SELECT application_id FROM application WHERE application_id IN (${placeholders}) AND LOWER(email) = ?`,
+          [...application_ids, email],
         );
-        if (ownerCheck.length === 0) {
-          return res.status(403).json({ message: 'Application not found or access denied.' });
+        if (ownerCheck.length !== application_ids.length) {
+          return res.status(403).json({ message: 'One or more applications not found or access denied.' });
         }
       }
 
@@ -597,10 +604,10 @@ app.post('/api/documents', upload.single('file'), authenticateToken, async (req,
 
       const document_id = result.insertId;
 
-      if (application_id !== null) {
+      for (const app_id of application_ids) {
         await connection.execute(
           'INSERT INTO application_document (application_id, document_id) VALUES (?, ?)',
-          [application_id, document_id],
+          [app_id, document_id],
         );
       }
 
@@ -616,7 +623,7 @@ app.post('/api/documents', upload.single('file'), authenticateToken, async (req,
           file_size,
           upload_date: normalized_date,
           notes,
-          application_id: application_id ?? null,
+          application_ids: application_ids.join(',') || null,
         },
       });
     } finally {
@@ -631,12 +638,16 @@ app.post('/api/documents', upload.single('file'), authenticateToken, async (req,
 
 app.get('/api/documents', authenticateToken, async (req, res) => {
   const email = normalizeEmail(req.user.email);
+  const filterAppId = req.query.application_id ? Number(req.query.application_id) : null;
+
+  if (filterAppId !== null && (!Number.isInteger(filterAppId) || filterAppId <= 0)) {
+    return res.status(400).json({ message: 'Invalid application_id.' });
+  }
 
   try {
     const connection = await createConnection();
     try {
-      const [rows] = await connection.execute(
-        `SELECT
+      let query = `SELECT
           d.document_id,
           d.email,
           d.title,
@@ -645,16 +656,22 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
           d.file_size,
           d.upload_date,
           d.notes,
-          ad.application_id,
-          CONCAT(a.company, ' — ', a.job_title) AS linked_application
+          GROUP_CONCAT(ad.application_id ORDER BY ad.application_id SEPARATOR ',') AS application_ids,
+          GROUP_CONCAT(CONCAT(a.company, ' — ', a.job_title) ORDER BY ad.application_id SEPARATOR '|||') AS linked_applications
         FROM document d
         LEFT JOIN application_document ad ON d.document_id = ad.document_id
         LEFT JOIN application a ON ad.application_id = a.application_id AND LOWER(a.email) = ?
-        WHERE LOWER(d.email) = ?
-        ORDER BY d.document_id DESC`,
-        [email, email],
-      );
+        WHERE LOWER(d.email) = ?`;
+      const params = [email, email];
 
+      if (filterAppId !== null) {
+        query += ' AND d.document_id IN (SELECT document_id FROM application_document WHERE application_id = ?)';
+        params.push(filterAppId);
+      }
+
+      query += ' GROUP BY d.document_id ORDER BY d.document_id DESC';
+
+      const [rows] = await connection.execute(query, params);
       res.status(200).json({ documents: rows });
     } finally {
       await connection.end();
@@ -717,15 +734,21 @@ app.put('/api/documents/:documentId', upload.single('file'), authenticateToken, 
   const document_type = String(req.body.document_type || '').trim();
   const upload_date = String(req.body.upload_date || '').trim();
   const notes = normalizeOptionalString(req.body.notes);
-  const application_id = req.body.application_id ? Number(req.body.application_id) : null;
+
+  let application_ids = [];
+  try {
+    const parsed = JSON.parse(req.body.application_ids || '[]');
+    application_ids = Array.isArray(parsed)
+      ? parsed.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+      : [];
+  } catch {
+    application_ids = [];
+  }
 
   if (!title) return res.status(400).json({ message: 'Document title is required.' });
   if (!document_type) return res.status(400).json({ message: 'Document type is required.' });
   if (!upload_date || Number.isNaN(Date.parse(upload_date))) {
     return res.status(400).json({ message: 'A valid upload date is required.' });
-  }
-  if (application_id !== null && (!Number.isInteger(application_id) || application_id <= 0)) {
-    return res.status(400).json({ message: 'Invalid application id.' });
   }
 
   const normalized_date = new Date(upload_date).toISOString().slice(0, 10);
@@ -742,13 +765,14 @@ app.put('/api/documents/:documentId', upload.single('file'), authenticateToken, 
         return res.status(404).json({ message: 'Document not found or access denied.' });
       }
 
-      if (application_id !== null) {
+      if (application_ids.length > 0) {
+        const placeholders = application_ids.map(() => '?').join(', ');
         const [ownerCheck] = await connection.execute(
-          'SELECT application_id FROM application WHERE application_id = ? AND LOWER(email) = ?',
-          [application_id, email],
+          `SELECT application_id FROM application WHERE application_id IN (${placeholders}) AND LOWER(email) = ?`,
+          [...application_ids, email],
         );
-        if (ownerCheck.length === 0) {
-          return res.status(403).json({ message: 'Application not found or access denied.' });
+        if (ownerCheck.length !== application_ids.length) {
+          return res.status(403).json({ message: 'One or more applications not found or access denied.' });
         }
       }
 
@@ -786,10 +810,10 @@ app.put('/api/documents/:documentId', upload.single('file'), authenticateToken, 
         [documentId],
       );
 
-      if (application_id !== null) {
+      for (const app_id of application_ids) {
         await connection.execute(
           'INSERT INTO application_document (application_id, document_id) VALUES (?, ?)',
-          [application_id, documentId],
+          [app_id, documentId],
         );
       }
 
