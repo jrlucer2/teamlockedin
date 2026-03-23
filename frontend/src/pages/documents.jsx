@@ -564,45 +564,39 @@ export default function Documents({ onLogout, onNavigate }) {
           ) : (
             filtered.map((item) => (
               <article className="document-card" key={item.id}>
-                <div className="document-head">
-                  <div>
+                <div className="document-card-row">
+                  <div className="document-card-main">
                     <h3 className="document-title-item">{item.title}</h3>
-                    <p className="document-submeta">
-                      {formatDocumentType(item.documentType)} • Uploaded {item.uploadDate}
-                    </p>
+                    <span className="document-pill">{formatDocumentType(item.documentType)}</span>
                   </div>
-                  <span className="document-pill">{formatDocumentType(item.documentType)}</span>
+                  <div className="document-actions">
+                    <button
+                      className="doc-action-btn"
+                      type="button"
+                      onClick={() => viewDocument(item)}
+                      disabled={isViewingId === item.id}
+                    >
+                      {isViewingId === item.id ? "Loading..." : "View"}
+                    </button>
+                    <button className="doc-action-btn" type="button" onClick={() => openEditModal(item)}>
+                      Edit
+                    </button>
+                    <button
+                      className="doc-action-btn doc-action-btn--danger"
+                      type="button"
+                      onClick={() => confirmDelete(item)}
+                      disabled={isDeletingId === item.id}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
 
-                <div className="document-details-grid">
-                  <div>File: {item.fileName || "No file"}</div>
-                  <div>Size: {formatFileSize(item.fileSize)}</div>
-                  <div>Linked Apps: {item.linkedApplication || "Not linked"}</div>
-                </div>
+                <p className="document-meta-line">
+                  {formatDocumentType(item.documentType)} • {item.uploadDate} • {item.fileName || "No file"} • {formatFileSize(item.fileSize)}{item.linkedApplication ? ` • ${item.linkedApplication}` : ""}
+                </p>
 
                 {item.notes ? <p className="document-notes">{item.notes}</p> : null}
-
-                <div className="document-actions">
-                  <button
-                    className="ghost-btn"
-                    type="button"
-                    onClick={() => viewDocument(item)}
-                    disabled={isViewingId === item.id}
-                  >
-                    {isViewingId === item.id ? "Loading..." : "View"}
-                  </button>
-                  <button className="ghost-btn" type="button" onClick={() => openEditModal(item)}>
-                    Replace / Edit
-                  </button>
-                  <button
-                    className="danger-btn"
-                    type="button"
-                    onClick={() => confirmDelete(item)}
-                    disabled={isDeletingId === item.id}
-                  >
-                    Delete
-                  </button>
-                </div>
               </article>
             ))
           )}

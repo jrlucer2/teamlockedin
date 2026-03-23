@@ -827,6 +827,44 @@ app.put('/api/documents/:documentId', upload.single('file'), authenticateToken, 
   }
 });
 
+app.delete('/api/documents/:documentId/applications/:applicationId', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const documentId = Number(req.params.documentId);
+  const applicationId = Number(req.params.applicationId);
+
+  if (!Number.isInteger(documentId) || documentId <= 0) {
+    return res.status(400).json({ message: 'Invalid document id.' });
+  }
+  if (!Number.isInteger(applicationId) || applicationId <= 0) {
+    return res.status(400).json({ message: 'Invalid application id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [docCheck] = await connection.execute(
+        'SELECT document_id FROM document WHERE document_id = ? AND LOWER(email) = ?',
+        [documentId, email],
+      );
+      if (docCheck.length === 0) {
+        return res.status(404).json({ message: 'Document not found or access denied.' });
+      }
+
+      await connection.execute(
+        'DELETE FROM application_document WHERE document_id = ? AND application_id = ?',
+        [documentId, applicationId],
+      );
+
+      res.status(204).send();
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error unlinking document.' });
+  }
+});
+
 app.delete('/api/documents/:documentId', authenticateToken, async (req, res) => {
   const email = normalizeEmail(req.user.email);
   const documentId = Number(req.params.documentId);

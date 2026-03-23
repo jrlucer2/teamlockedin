@@ -84,6 +84,12 @@ export async function deleteDocument(documentId) {
   });
 }
 
+export async function unlinkDocumentFromApplication(documentId, applicationId) {
+  await request(`/api/documents/${documentId}/applications/${applicationId}`, {
+    method: "DELETE",
+  });
+}
+
 // Issue #12: parse error response before attempting blob() so server errors surface correctly.
 // The response body can only be consumed once, so we branch on ok before calling .blob().
 export async function fetchDocumentBlob(documentId) {

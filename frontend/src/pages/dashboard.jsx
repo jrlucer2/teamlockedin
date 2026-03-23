@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
-import { fetchDocumentBlob, fetchDocumentsForApplication } from "../lib/documentsApi";
+import { fetchDocumentBlob, fetchDocumentsForApplication, unlinkDocumentFromApplication } from "../lib/documentsApi";
 
 const SEED_REMINDERS = [
   { id: 1, date: "Feb 26", text: "Follow-up Call", applicationId: 2 },
@@ -182,6 +182,7 @@ function ApplicationDetailModal({
   onClose,
   onSave,
   onViewDocument,
+  onUnlinkDocument,
   statusValue,
   onStatusChange,
 }) {
@@ -266,6 +267,13 @@ function ApplicationDetailModal({
                       onClick={() => onViewDocument(doc.id)}
                     >
                       View
+                    </button>
+                    <button
+                      className="danger-btn"
+                      type="button"
+                      onClick={() => onUnlinkDocument(doc.id)}
+                    >
+                      Unlink
                     </button>
                   </li>
                 ))}
@@ -455,6 +463,16 @@ export default function Dashboard({
       setTimeout(() => URL.revokeObjectURL(url), 15000);
     } catch (error) {
       setDetailError(error?.message || "Could not open document.");
+    }
+  }
+
+  async function handleUnlinkDocument(documentId) {
+    if (!selectedApplication) return;
+    try {
+      await unlinkDocumentFromApplication(documentId, selectedApplication.application_id);
+      setLinkedDocuments((prev) => (prev ?? []).filter((doc) => doc.id !== documentId));
+    } catch (error) {
+      setDetailError(error?.message || "Could not unlink document.");
     }
   }
 
@@ -730,6 +748,7 @@ export default function Dashboard({
           onClose={handleCloseDetails}
           onSave={handleSaveStatus}
           onViewDocument={handleViewDocument}
+          onUnlinkDocument={handleUnlinkDocument}
           onStatusChange={setDetailStatus}
           statusValue={detailStatus}
         />
