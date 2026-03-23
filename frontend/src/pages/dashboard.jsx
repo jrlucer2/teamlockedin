@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
 import { fetchDocumentBlob, fetchDocumentsForApplication, unlinkDocumentFromApplication } from "../lib/documentsApi";
+import { toTitleCase } from "../lib/formatting";
 
 const SEED_REMINDERS = [
   { id: 1, date: "Feb 26", text: "Follow-up Call", applicationId: 2 },
@@ -14,13 +15,6 @@ function normalize(value) {
   return String(value ?? "").toLowerCase().trim();
 }
 
-function toTitleCase(value) {
-  return String(value ?? "")
-    .split(/[_-]/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
 
 function normalizePositionType(value) {
   const normalized = String(value ?? "").trim();
@@ -326,6 +320,7 @@ export default function Dashboard({
   const [detailMode, setDetailMode] = useState("view");
   const [linkedDocuments, setLinkedDocuments] = useState(null);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const viewedUrlsRef = useRef([]);
 
   useEffect(() => {
     if (!selectedApplication) return;
@@ -400,11 +395,11 @@ export default function Dashboard({
     }
   }
 
-  function handleOpenDetails(application) {
+  function openApplicationDetail(application, mode) {
     setSelectedApplication(application);
     setDetailStatus(application.job_status);
     setDetailError("");
-    setDetailMode("view");
+    setDetailMode(mode);
     setLinkedDocuments(null);
     setIsLoadingDocs(true);
     fetchDocumentsForApplication(application.application_id)
@@ -413,21 +408,18 @@ export default function Dashboard({
       .finally(() => setIsLoadingDocs(false));
   }
 
+  function handleOpenDetails(application) {
+    openApplicationDetail(application, "view");
+  }
+
   function handleOpenStatusEditor(application) {
-    setSelectedApplication(application);
-    setDetailStatus(application.job_status);
-    setDetailError("");
-    setDetailMode("status");
-    setLinkedDocuments(null);
-    setIsLoadingDocs(true);
-    fetchDocumentsForApplication(application.application_id)
-      .then((docs) => setLinkedDocuments(docs))
-      .catch(() => setLinkedDocuments([]))
-      .finally(() => setIsLoadingDocs(false));
+    openApplicationDetail(application, "status");
   }
 
   function handleCloseDetails() {
     if (isSavingDetail) return;
+    viewedUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    viewedUrlsRef.current = [];
     setSelectedApplication(null);
     setDetailStatus("");
     setDetailError("");
@@ -459,8 +451,8 @@ export default function Dashboard({
     try {
       const blob = await fetchDocumentBlob(documentId);
       const url = URL.createObjectURL(blob);
+      viewedUrlsRef.current.push(url);
       window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 15000);
     } catch (error) {
       setDetailError(error?.message || "Could not open document.");
     }

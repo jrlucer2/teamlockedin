@@ -114,6 +114,17 @@ const POSITION_TYPE_MAP = {
 
 const VALID_POSITION_TYPES = new Set(Object.values(POSITION_TYPE_MAP));
 
+function parseApplicationIds(raw) {
+  try {
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed)
+      ? parsed.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function normalizePositionType(value) {
   const normalized = String(value ?? '')
     .trim()
@@ -560,15 +571,7 @@ app.post('/api/documents', upload.single('file'), authenticateToken, async (req,
   const upload_date = String(req.body.upload_date || '').trim();
   const notes = normalizeOptionalString(req.body.notes);
 
-  let application_ids = [];
-  try {
-    const parsed = JSON.parse(req.body.application_ids || '[]');
-    application_ids = Array.isArray(parsed)
-      ? parsed.map(Number).filter((n) => Number.isInteger(n) && n > 0)
-      : [];
-  } catch {
-    application_ids = [];
-  }
+  const application_ids = parseApplicationIds(req.body.application_ids);
 
   if (!title) return res.status(400).json({ message: 'Document title is required.' });
   if (!document_type) return res.status(400).json({ message: 'Document type is required.' });
@@ -604,10 +607,12 @@ app.post('/api/documents', upload.single('file'), authenticateToken, async (req,
 
       const document_id = result.insertId;
 
-      for (const app_id of application_ids) {
+      if (application_ids.length > 0) {
+        const placeholders = application_ids.map(() => '(?, ?)').join(', ');
+        const values = application_ids.flatMap((app_id) => [app_id, document_id]);
         await connection.execute(
-          'INSERT INTO application_document (application_id, document_id) VALUES (?, ?)',
-          [app_id, document_id],
+          `INSERT INTO application_document (application_id, document_id) VALUES ${placeholders}`,
+          values,
         );
       }
 
@@ -657,7 +662,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
           d.upload_date,
           d.notes,
           GROUP_CONCAT(ad.application_id ORDER BY ad.application_id SEPARATOR ',') AS application_ids,
-          GROUP_CONCAT(CONCAT(a.company, ' — ', a.job_title) ORDER BY ad.application_id SEPARATOR '|||') AS linked_applications
+          GROUP_CONCAT(CONCAT(a.company, ' — ', a.job_title) ORDER BY ad.application_id SEPARATOR '\x1f') AS linked_applications
         FROM document d
         LEFT JOIN application_document ad ON d.document_id = ad.document_id
         LEFT JOIN application a ON ad.application_id = a.application_id AND LOWER(a.email) = ?
@@ -735,15 +740,7 @@ app.put('/api/documents/:documentId', upload.single('file'), authenticateToken, 
   const upload_date = String(req.body.upload_date || '').trim();
   const notes = normalizeOptionalString(req.body.notes);
 
-  let application_ids = [];
-  try {
-    const parsed = JSON.parse(req.body.application_ids || '[]');
-    application_ids = Array.isArray(parsed)
-      ? parsed.map(Number).filter((n) => Number.isInteger(n) && n > 0)
-      : [];
-  } catch {
-    application_ids = [];
-  }
+  const application_ids = parseApplicationIds(req.body.application_ids);
 
   if (!title) return res.status(400).json({ message: 'Document title is required.' });
   if (!document_type) return res.status(400).json({ message: 'Document type is required.' });
@@ -810,10 +807,12 @@ app.put('/api/documents/:documentId', upload.single('file'), authenticateToken, 
         [documentId],
       );
 
-      for (const app_id of application_ids) {
+      if (application_ids.length > 0) {
+        const placeholders = application_ids.map(() => '(?, ?)').join(', ');
+        const values = application_ids.flatMap((app_id) => [app_id, documentId]);
         await connection.execute(
-          'INSERT INTO application_document (application_id, document_id) VALUES (?, ?)',
-          [app_id, documentId],
+          `INSERT INTO application_document (application_id, document_id) VALUES ${placeholders}`,
+          values,
         );
       }
 

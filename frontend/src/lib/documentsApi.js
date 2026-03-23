@@ -17,7 +17,7 @@ async function request(path, options = {}) {
 
 function mapDocument(doc) {
   const linkedApplications = doc.linked_applications
-    ? doc.linked_applications.split("|||")
+    ? doc.linked_applications.split("\x1f")
     : [];
   return {
     id: doc.document_id,

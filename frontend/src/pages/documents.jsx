@@ -10,6 +10,7 @@ import {
   fetchDocumentBlob,
 } from "../lib/documentsApi";
 import { fetchApplications } from "../lib/applicationsApi";
+import { toTitleCase, formatFileSize } from "../lib/formatting";
 
 const INITIAL_FORM = {
   id: null,
@@ -25,20 +26,6 @@ function normalize(value) {
   return String(value ?? "").toLowerCase().trim();
 }
 
-function formatDocumentType(value) {
-  return String(value)
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function formatFileSize(bytes) {
-  if (!bytes || Number.isNaN(Number(bytes))) return "Unknown size";
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  return `${(kb / 1024).toFixed(2)} MB`;
-}
 
 function todayDateString() {
   return new Date().toISOString().slice(0, 10);
@@ -554,7 +541,7 @@ export default function Documents({ onLogout, onNavigate }) {
           </div>
         </section>
 
-        {apiError ? <div className="form-error documents-api-error" role="alert">{apiError}</div> : null}
+        {apiError ? <div className="form-error" role="alert">{apiError}</div> : null}
 
         <section className="documents-list" aria-label="Documents list">
           {loading ? (
@@ -567,7 +554,7 @@ export default function Documents({ onLogout, onNavigate }) {
                 <div className="document-card-row">
                   <div className="document-card-main">
                     <h3 className="document-title-item">{item.title}</h3>
-                    <span className="document-pill">{formatDocumentType(item.documentType)}</span>
+                    <span className="document-pill">{toTitleCase(item.documentType)}</span>
                   </div>
                   <div className="document-actions">
                     <button
@@ -593,7 +580,7 @@ export default function Documents({ onLogout, onNavigate }) {
                 </div>
 
                 <p className="document-meta-line">
-                  {formatDocumentType(item.documentType)} • {item.uploadDate} • {item.fileName || "No file"} • {formatFileSize(item.fileSize)}{item.linkedApplication ? ` • ${item.linkedApplication}` : ""}
+                  {toTitleCase(item.documentType)} • {item.uploadDate} • {item.fileName || "No file"} • {formatFileSize(item.fileSize)}{item.linkedApplication ? ` • ${item.linkedApplication}` : ""}
                 </p>
 
                 {item.notes ? <p className="document-notes">{item.notes}</p> : null}
