@@ -366,23 +366,26 @@ app.get('/api/jobs', authenticateToken, async (req, res) => {
     try {
       const [rows] = await connection.execute(
         `SELECT
-          application_id,
-          email,
-          job_title,
-          company,
-          job_location,
-          position_type,
-          posting_date,
-          closing_date,
-          job_status,
-          job_salary,
-          salary_hourly,
-          job_url,
-          job_description,
-          application_notes
-        FROM application
-        WHERE LOWER(email) = ?
-        ORDER BY application_id DESC`,
+          a.application_id,
+          a.email,
+          a.job_title,
+          a.company,
+          a.job_location,
+          a.position_type,
+          a.posting_date,
+          a.closing_date,
+          a.job_status,
+          a.job_salary,
+          a.salary_hourly,
+          a.job_url,
+          a.job_description,
+          a.application_notes,
+          COUNT(ad.document_id) AS doc_count
+        FROM application a
+        LEFT JOIN application_document ad ON a.application_id = ad.application_id
+        WHERE LOWER(a.email) = ?
+        GROUP BY a.application_id
+        ORDER BY a.application_id DESC`,
         [email],
       );
 

@@ -132,7 +132,30 @@ function ApplicationCard({ app, deletingId, onDelete, onOpenDetails, onOpenStatu
     >
       <div className="app-card-header">
         <h3 className="app-title">{app.job_title}</h3>
-        <StatusPill status={app.job_status} onClick={() => onOpenStatusEditor(app)} />
+        <div className="app-card-badges">
+          {app.doc_count > 0 && (
+            <span
+              className="app-doc-count"
+              title={`${app.doc_count} linked document${app.doc_count !== 1 ? "s" : ""}`}
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+              </svg>
+              {app.doc_count}
+            </span>
+          )}
+          <StatusPill status={app.job_status} onClick={() => onOpenStatusEditor(app)} />
+        </div>
       </div>
 
       <div className="app-meta">
