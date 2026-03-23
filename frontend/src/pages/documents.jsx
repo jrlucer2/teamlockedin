@@ -2,31 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
 import "../styles/dashboard.css";
 import "../styles/documents.css";
-
-const SEED_DOCUMENTS = [
-  {
-    id: 1,
-    title: "Amazon Data Analyst Resume",
-    documentType: "resume",
-    uploadDate: "2026-03-01",
-    notes: "Tailored for SQL-heavy analytics role.",
-    linkedApplication: "Amazon — Data Analyst",
-    fileName: "amazon-data-analyst-resume.pdf",
-    fileSize: 218004,
-    objectUrl: null,
-  },
-  {
-    id: 2,
-    title: "Google SWE Cover Letter",
-    documentType: "cover_letter",
-    uploadDate: "2026-02-26",
-    notes: "Highlights distributed systems project work.",
-    linkedApplication: "Google — Software Engineer Intern",
-    fileName: "google-swe-cover-letter.pdf",
-    fileSize: 126530,
-    objectUrl: null,
-  },
-];
+import {
+  fetchDocuments,
+  createDocument,
+  updateDocument,
+  deleteDocument as apiDeleteDocument,
+  fetchDocumentBlob,
+} from "../lib/documentsApi";
+import { fetchApplications } from "../lib/applicationsApi";
 
 const INITIAL_FORM = {
   id: null,
@@ -34,7 +17,7 @@ const INITIAL_FORM = {
   documentType: "resume",
   uploadDate: "",
   notes: "",
-  linkedApplication: "",
+  applicationId: null,
   file: null,
 };
 
@@ -85,10 +68,11 @@ function DocumentModal({ title, children, onClose }) {
   );
 }
 
-function DocumentForm({ initial, isEditing, onSave, onCancel }) {
+function DocumentForm({ initial, isEditing, applications, isSaving, onSave, onCancel }) {
   const [form, setForm] = useState({
     ...initial,
     uploadDate: initial.uploadDate || todayDateString(),
+    applicationId: initial.applicationId ?? null,
     file: null,
   });
   const [error, setError] = useState("");
@@ -116,17 +100,29 @@ function DocumentForm({ initial, isEditing, onSave, onCancel }) {
       return;
     }
 
+    if (form.file) {
+      const ALLOWED_EXTS = /\.(pdf|doc|docx|txt)$/i;
+      const MAX_SIZE = 10 * 1024 * 1024;
+      if (!ALLOWED_EXTS.test(form.file.name)) {
+        setError("Only PDF, DOC, DOCX, and TXT files are allowed.");
+        return;
+      }
+      if (form.file.size > MAX_SIZE) {
+        setError("File size must not exceed 10 MB.");
+        return;
+      }
+    }
+
     onSave({
       ...form,
       title: form.title.trim(),
       notes: form.notes.trim(),
-      linkedApplication: form.linkedApplication.trim(),
     });
   }
 
   return (
     <form className="document-form" onSubmit={submitForm}>
-      {error ? <div className="form-error">{error}</div> : null}
+      {error ? <div className="form-error" role="alert">{error}</div> : null}
 
       <div className="document-form-grid">
         <label className="form-field">
@@ -164,11 +160,19 @@ function DocumentForm({ initial, isEditing, onSave, onCancel }) {
 
         <label className="form-field">
           <span className="form-label">Linked Application (Optional)</span>
-          <input
-            value={form.linkedApplication}
-            onChange={(event) => updateField("linkedApplication", event.target.value)}
-            placeholder="e.g., Amazon — Data Analyst"
-          />
+          <select
+            value={form.applicationId ?? ""}
+            onChange={(event) =>
+              updateField("applicationId", event.target.value === "" ? null : Number(event.target.value))
+            }
+          >
+            <option value="">None</option>
+            {applications.map((app) => (
+              <option key={app.application_id} value={app.application_id}>
+                {app.company} — {app.job_title}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label className="form-field form-field--full">
@@ -192,11 +196,11 @@ function DocumentForm({ initial, isEditing, onSave, onCancel }) {
       </div>
 
       <div className="documents-modal-actions">
-        <button className="ghost-btn" type="button" onClick={onCancel}>
+        <button className="ghost-btn" type="button" onClick={onCancel} disabled={isSaving}>
           Cancel
         </button>
-        <button className="primary-btn" type="submit">
-          {isEditing ? "Update Document" : "Save Document"}
+        <button className="primary-btn" type="submit" disabled={isSaving}>
+          {isSaving ? "Saving..." : isEditing ? "Update Document" : "Save Document"}
         </button>
       </div>
     </form>
@@ -204,7 +208,10 @@ function DocumentForm({ initial, isEditing, onSave, onCancel }) {
 }
 
 export default function Documents({ onLogout, onNavigate }) {
-  const [documents, setDocuments] = useState(SEED_DOCUMENTS);
+  const [documents, setDocuments] = useState([]);
+  const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState("");
 
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -213,6 +220,31 @@ export default function Documents({ onLogout, onNavigate }) {
 
   const [modalState, setModalState] = useState({ open: false, editing: null });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeletingId, setIsDeletingId] = useState(null);
+  const [isViewingId, setIsViewingId] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([fetchDocuments(), fetchApplications()])
+      .then(([docs, apps]) => {
+        if (!cancelled) {
+          setDocuments(docs);
+          setApplications(apps);
+          setApiError("");
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setApiError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -272,75 +304,90 @@ export default function Documents({ onLogout, onNavigate }) {
     setModalState({ open: false, editing: null });
   }
 
-  function saveDocument(payload) {
-    const nextFile = payload.file;
-    const nextObjectUrl = nextFile ? URL.createObjectURL(nextFile) : payload.objectUrl ?? null;
-
-    if (payload.id == null) {
-      const nextId = Math.max(0, ...documents.map((item) => item.id)) + 1;
-      const created = {
-        id: nextId,
-        title: payload.title,
-        documentType: payload.documentType,
-        uploadDate: payload.uploadDate,
-        notes: payload.notes,
-        linkedApplication: payload.linkedApplication,
-        fileName: nextFile ? nextFile.name : "Uploaded file",
-        fileSize: nextFile ? nextFile.size : 0,
-        objectUrl: nextObjectUrl,
-      };
-      setDocuments((prev) => [created, ...prev]);
+  async function saveDocument(payload) {
+    if (isSaving) return;
+    setIsSaving(true);
+    setApiError("");
+    try {
+      if (payload.id == null) {
+        const created = await createDocument(payload);
+        setDocuments((prev) => [created, ...prev]);
+      } else {
+        await updateDocument(payload.id, payload);
+        const linkedApp = applications.find((a) => a.application_id === payload.applicationId);
+        setDocuments((prev) =>
+          prev.map((item) => {
+            if (item.id !== payload.id) return item;
+            if (payload.file && item.objectUrl) URL.revokeObjectURL(item.objectUrl);
+            return {
+              ...item,
+              title: payload.title,
+              documentType: payload.documentType,
+              uploadDate: payload.uploadDate,
+              notes: payload.notes,
+              applicationId: payload.applicationId,
+              linkedApplication: linkedApp
+                ? `${linkedApp.company} — ${linkedApp.job_title}`
+                : "",
+              fileName: payload.file ? payload.file.name : item.fileName,
+              fileSize: payload.file ? payload.file.size : item.fileSize,
+              objectUrl: payload.file ? null : item.objectUrl,
+            };
+          })
+        );
+      }
       closeModal();
-      return;
+    } catch (err) {
+      setApiError(err.message);
+    } finally {
+      setIsSaving(false);
     }
-
-    setDocuments((prev) =>
-      prev.map((item) => {
-        if (item.id !== payload.id) return item;
-
-        if (nextFile && item.objectUrl) {
-          URL.revokeObjectURL(item.objectUrl);
-        }
-
-        return {
-          ...item,
-          title: payload.title,
-          documentType: payload.documentType,
-          uploadDate: payload.uploadDate,
-          notes: payload.notes,
-          linkedApplication: payload.linkedApplication,
-          fileName: nextFile ? nextFile.name : item.fileName,
-          fileSize: nextFile ? nextFile.size : item.fileSize,
-          objectUrl: nextFile ? nextObjectUrl : item.objectUrl,
-        };
-      })
-    );
-
-    closeModal();
   }
 
   function confirmDelete(document) {
     setDeleteTarget(document);
   }
 
-  function deleteDocument() {
-    if (!deleteTarget) return;
+  async function deleteDocument() {
+    if (!deleteTarget || isDeletingId === deleteTarget.id) return;
 
-    if (deleteTarget.objectUrl) {
-      URL.revokeObjectURL(deleteTarget.objectUrl);
+    setIsDeletingId(deleteTarget.id);
+    setApiError("");
+    try {
+      await apiDeleteDocument(deleteTarget.id);
+      if (deleteTarget.objectUrl) URL.revokeObjectURL(deleteTarget.objectUrl);
+      setDocuments((prev) => prev.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      setApiError(err.message);
+      setDeleteTarget(null);
+    } finally {
+      setIsDeletingId(null);
     }
-
-    setDocuments((prev) => prev.filter((item) => item.id !== deleteTarget.id));
-    setDeleteTarget(null);
   }
 
-  function viewDocument(document) {
+  async function viewDocument(document) {
     if (document.objectUrl) {
       window.open(document.objectUrl, "_blank", "noopener,noreferrer");
       return;
     }
 
-    window.alert("This seeded document has metadata only. Upload/replace it to enable preview.");
+    if (isViewingId === document.id) return;
+
+    setIsViewingId(document.id);
+    setApiError("");
+    try {
+      const blob = await fetchDocumentBlob(document.id);
+      const url = URL.createObjectURL(blob);
+      setDocuments((prev) =>
+        prev.map((item) => (item.id === document.id ? { ...item, objectUrl: url } : item))
+      );
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setApiError(err.message);
+    } finally {
+      setIsViewingId(null);
+    }
   }
 
   return (
@@ -443,8 +490,12 @@ export default function Documents({ onLogout, onNavigate }) {
           </div>
         </section>
 
+        {apiError ? <div className="form-error documents-api-error" role="alert">{apiError}</div> : null}
+
         <section className="documents-list" aria-label="Documents list">
-          {!filtered.length ? (
+          {loading ? (
+            <div className="documents-empty">Loading documents...</div>
+          ) : !filtered.length ? (
             <div className="documents-empty">No documents match the current filters.</div>
           ) : (
             filtered.map((item) => (
@@ -468,13 +519,23 @@ export default function Documents({ onLogout, onNavigate }) {
                 {item.notes ? <p className="document-notes">{item.notes}</p> : null}
 
                 <div className="document-actions">
-                  <button className="ghost-btn" type="button" onClick={() => viewDocument(item)}>
-                    View
+                  <button
+                    className="ghost-btn"
+                    type="button"
+                    onClick={() => viewDocument(item)}
+                    disabled={isViewingId === item.id}
+                  >
+                    {isViewingId === item.id ? "Loading..." : "View"}
                   </button>
                   <button className="ghost-btn" type="button" onClick={() => openEditModal(item)}>
                     Replace / Edit
                   </button>
-                  <button className="danger-btn" type="button" onClick={() => confirmDelete(item)}>
+                  <button
+                    className="danger-btn"
+                    type="button"
+                    onClick={() => confirmDelete(item)}
+                    disabled={isDeletingId === item.id}
+                  >
                     Delete
                   </button>
                 </div>
@@ -489,6 +550,8 @@ export default function Documents({ onLogout, onNavigate }) {
           <DocumentForm
             initial={modalState.editing ?? INITIAL_FORM}
             isEditing={Boolean(modalState.editing)}
+            applications={applications}
+            isSaving={isSaving}
             onSave={saveDocument}
             onCancel={closeModal}
           />
@@ -501,10 +564,20 @@ export default function Documents({ onLogout, onNavigate }) {
             Delete <strong>{deleteTarget.title}</strong>? This action cannot be undone.
           </p>
           <div className="documents-modal-actions">
-            <button className="ghost-btn" type="button" onClick={() => setDeleteTarget(null)}>
+            <button
+              className="ghost-btn"
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              disabled={isDeletingId === deleteTarget.id}
+            >
               Cancel
             </button>
-            <button className="danger-btn" type="button" onClick={deleteDocument}>
+            <button
+              className="danger-btn"
+              type="button"
+              onClick={deleteDocument}
+              disabled={isDeletingId === deleteTarget.id}
+            >
               Delete
             </button>
           </div>
