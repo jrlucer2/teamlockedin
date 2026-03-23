@@ -238,6 +238,252 @@ if (servingReactBuild) {
     });
 }
 
+// Route: Get reminders for current user
+app.get('/api/reminders', authenticateToken, async (req, res) => {
+    try {
+        const connection = await createConnection();
+
+        const [rows] = await connection.execute(
+            `
+            SELECT
+                Reminder_ID,
+                Email,
+                Reminder_Title,
+                Reminder_Category,
+                Reminder_Priority,
+                Reminder_Status,
+                Reminder_Due_Date,
+                Reminder_Due_Time,
+                Reminder_Company,
+                Reminder_Role,
+                Reminder_Notes
+            FROM reminder
+            WHERE LOWER(Email) = ?
+            ORDER BY Reminder_Due_Date ASC, Reminder_Due_Time ASC
+            `,
+            [req.user.email]
+        );
+
+        await connection.end();
+        res.status(200).json({ reminders: rows });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error retrieving reminders.' });
+    }
+});
+
+// Route: Create reminder
+app.post('/api/reminders', authenticateToken, async (req, res) => {
+    const {
+        title,
+        category,
+        priority,
+        status,
+        dueDate,
+        dueTime,
+        company,
+        role,
+        notes
+    } = req.body;
+
+    if (!title || !dueDate || !dueTime) {
+        return res.status(400).json({
+            message: 'Title, due date, and due time are required.'
+        });
+    }
+
+    try {
+        const connection = await createConnection();
+
+        const [result] = await connection.execute(
+            `
+            INSERT INTO reminder (
+                Email,
+                Reminder_Title,
+                Reminder_Category,
+                Reminder_Priority,
+                Reminder_Status,
+                Reminder_Due_Date,
+                Reminder_Due_Time,
+                Reminder_Company,
+                Reminder_Role,
+                Reminder_Notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            [
+                req.user.email,
+                title,
+                category || null,
+                priority || null,
+                status || 'Pending',
+                dueDate,
+                dueTime,
+                company || null,
+                role || null,
+                notes || null
+            ]
+        );
+
+        const [rows] = await connection.execute(
+            `
+            SELECT
+                Reminder_ID,
+                Email,
+                Reminder_Title,
+                Reminder_Category,
+                Reminder_Priority,
+                Reminder_Status,
+                Reminder_Due_Date,
+                Reminder_Due_Time,
+                Reminder_Company,
+                Reminder_Role,
+                Reminder_Notes
+            FROM reminder
+            WHERE Reminder_ID = ?
+            `,
+            [result.insertId]
+        );
+
+        await connection.end();
+        res.status(201).json({ reminder: rows[0] });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error creating reminder.' });
+    }
+});
+
+// Route: Update reminder
+app.put('/api/reminders/:id', authenticateToken, async (req, res) => {
+    const reminderId = Number(req.params.id);
+    const {
+        title,
+        category,
+        priority,
+        status,
+        dueDate,
+        dueTime,
+        company,
+        role,
+        notes
+    } = req.body;
+
+    if (!reminderId) {
+        return res.status(400).json({ message: 'Invalid reminder id.' });
+    }
+
+    if (!title || !dueDate || !dueTime) {
+        return res.status(400).json({
+            message: 'Title, due date, and due time are required.'
+        });
+    }
+
+    try {
+        const connection = await createConnection();
+
+        const [existing] = await connection.execute(
+            `
+            SELECT Reminder_ID
+            FROM reminder
+            WHERE Reminder_ID = ? AND LOWER(Email) = ?
+            `,
+            [reminderId, req.user.email]
+        );
+
+        if (existing.length === 0) {
+            await connection.end();
+            return res.status(404).json({ message: 'Reminder not found.' });
+        }
+
+        await connection.execute(
+            `
+            UPDATE reminder
+            SET
+                Reminder_Title = ?,
+                Reminder_Category = ?,
+                Reminder_Priority = ?,
+                Reminder_Status = ?,
+                Reminder_Due_Date = ?,
+                Reminder_Due_Time = ?,
+                Reminder_Company = ?,
+                Reminder_Role = ?,
+                Reminder_Notes = ?
+            WHERE Reminder_ID = ? AND LOWER(Email) = ?
+            `,
+            [
+                title,
+                category || null,
+                priority || null,
+                status || 'Pending',
+                dueDate,
+                dueTime,
+                company || null,
+                role || null,
+                notes || null,
+                reminderId,
+                req.user.email
+            ]
+        );
+
+        const [rows] = await connection.execute(
+            `
+            SELECT
+                Reminder_ID,
+                Email,
+                Reminder_Title,
+                Reminder_Category,
+                Reminder_Priority,
+                Reminder_Status,
+                Reminder_Due_Date,
+                Reminder_Due_Time,
+                Reminder_Company,
+                Reminder_Role,
+                Reminder_Notes
+            FROM reminder
+            WHERE Reminder_ID = ?
+            `,
+            [reminderId]
+        );
+
+        await connection.end();
+        res.status(200).json({ reminder: rows[0] });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error updating reminder.' });
+    }
+});
+
+// Route: Delete reminder
+app.delete('/api/reminders/:id', authenticateToken, async (req, res) => {
+    const reminderId = Number(req.params.id);
+
+    if (!reminderId) {
+        return res.status(400).json({ message: 'Invalid reminder id.' });
+    }
+
+    try {
+        const connection = await createConnection();
+
+        const [result] = await connection.execute(
+            `
+            DELETE FROM reminder
+            WHERE Reminder_ID = ? AND LOWER(Email) = ?
+            `,
+            [reminderId, req.user.email]
+        );
+
+        await connection.end();
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Reminder not found.' });
+        }
+
+        res.status(200).json({ message: 'Reminder deleted successfully.' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error deleting reminder.' });
+    }
+});
+
 
 // Start the server
 app.listen(port, () => {
