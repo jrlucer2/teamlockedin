@@ -1,74 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import lockedInLogo from "../assets/lockedindark.png";
+import { fetchDocumentBlob, fetchDocumentsForApplication, unlinkDocumentFromApplication } from "../lib/documentsApi";
+import { toTitleCase } from "../lib/formatting";
 import {
-  authenticatedFetch,
   getReminders,
   createReminder,
   updateReminder,
   deleteReminder,
 } from "../lib/api";
 
-const SEED_APPLICATIONS = [
-  {
-    id: 1,
-    title: "Software Engineer Intern",
-    company: "Google",
-    location: "Mountain View, CA",
-    status: "Interviewing",
-    next: "Interview • Feb 28, 2:00 PM",
-    docs: 2,
-    contacts: 1,
-  },
-  {
-    id: 2,
-    title: "Marketing Coordinator",
-    company: "Amazon",
-    location: "Seattle, WA",
-    status: "Applied",
-    next: "Follow-up • Feb 26",
-    docs: 1,
-    contacts: 1,
-  },
-  {
-    id: 3,
-    title: "Data Analyst",
-    company: "Amazon",
-    location: "Remote",
-    status: "Offer",
-    next: "Review offer",
-    docs: 2,
-    contacts: 2,
-  },
-  {
-    id: 4,
-    title: "UX Designer",
-    company: "Boeing",
-    location: "Everett, WA",
-    status: "Saved",
-    next: "Apply",
-    docs: 1,
-    contacts: 0,
-  },
-  {
-    id: 5,
-    title: "Project Manager",
-    company: "Microsoft",
-    location: "Redmond, WA",
-    status: "Rejected",
-    next: "Archive",
-    docs: 1,
-    contacts: 0,
-  },
-  {
-    id: 6,
-    title: "Business Analyst",
-    company: "Chase",
-    location: "Tempe, AZ",
-    status: "Applied",
-    next: "Follow-up",
-    docs: 2,
-    contacts: 1,
-  },
-];
+const STATUS_OPTIONS = ["saved", "applied", "interviewing", "offer", "rejected"];
 
 function normalize(value) {
   return String(value ?? "").toLowerCase().trim();
@@ -96,69 +37,338 @@ function formatReminderTime(timeValue) {
   return `${normalizedHour}:${minutes} ${suffix}`;
 }
 
-function StatusPill({ status }) {
-  const normalized = normalize(status).replace(/\s+/g, "-");
-  const className = `status-pill status-${normalized}`;
-  return <span className={className}>{status}</span>;
+function normalizePositionType(value) {
+  const normalized = String(value ?? "").trim();
+
+  if (normalized === "full_time" || normalized === "full-time") return "Full-time";
+  if (normalized === "part_time" || normalized === "part-time") return "Part-time";
+  if (normalized.toLowerCase() === "contractor") return "Contractor";
+  if (normalized.toLowerCase() === "internship") return "Internship";
+
+  return normalized;
 }
 
-function ApplicationCard({ app, onOpenDetails, onDelete }) {
+function formatCardDate(value) {
+  if (!value) return "Date not set";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatDetailDate(value) {
+  return value ? formatCardDate(value) : "Not provided";
+}
+
+function formatSalary(application) {
+  if (application.job_salary === null || application.job_salary === undefined || application.job_salary === "") {
+    return "Not provided";
+  }
+
+  const value = Number(application.job_salary);
+  if (Number.isNaN(value)) return "Not provided";
+
+  return application.salary_hourly ? `$${value}/hr` : `$${value.toLocaleString()}/yr`;
+}
+
+function buildApplicationSummary(application) {
+  if (application.closing_date) {
+    return `Closes: ${formatCardDate(application.closing_date)}`;
+  }
+
+  if (application.posting_date) {
+    return `Posted: ${formatCardDate(application.posting_date)}`;
+  }
+
+  return "Dates not provided";
+}
+
+function buildApplicationDetail(application) {
+  if (application.job_salary) {
+    return application.salary_hourly
+      ? `Compensation: $${Number(application.job_salary)}/hr`
+      : `Compensation: $${Number(application.job_salary).toLocaleString()}/yr`;
+  }
+
+  if (application.job_url) {
+    return "Job link saved";
+  }
+
+  return "No salary or link added";
+}
+
+function buildUpdatePayload(application, jobStatus) {
+  return {
+    job_title: application.job_title ?? "",
+    company: application.company ?? "",
+    job_location: application.job_location ?? "",
+    position_type: normalizePositionType(application.position_type),
+    posting_date: application.posting_date ? String(application.posting_date).slice(0, 10) : "",
+    closing_date: application.closing_date ? String(application.closing_date).slice(0, 10) : "",
+    job_status: jobStatus,
+    job_salary:
+      application.job_salary === null || application.job_salary === undefined
+        ? ""
+        : String(application.job_salary),
+    salary_hourly: Boolean(application.salary_hourly),
+    job_url: application.job_url ?? "",
+    job_description: application.job_description ?? "",
+    application_notes: application.application_notes ?? "",
+  };
+}
+
+function StatusPill({ status, onClick }) {
+  const normalized = normalize(status).replace(/\s+/g, "-");
+  return (
+    <button
+      className={`status-pill status-${normalized} status-pill-button`}
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.();
+      }}
+    >
+      {toTitleCase(status)}
+    </button>
+  );
+}
+
+function ApplicationCard({ app, deletingId, onDelete, onOpenDetails, onOpenStatusEditor, onEdit }) {
+  const isDeleting = deletingId === app.application_id;
+
   return (
     <article
       className="app-card"
       tabIndex={0}
       role="button"
-      aria-label={`Open ${app.title} at ${app.company}`}
+      aria-label={`Open ${app.job_title} at ${app.company}`}
       onClick={() => onOpenDetails(app)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onOpenDetails(app);
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") onOpenDetails(app);
       }}
     >
       <div className="app-card-header">
-        <h3 className="app-title">{app.title}</h3>
-        <StatusPill status={app.status} />
+        <h3 className="app-title">{app.job_title}</h3>
+        <div className="app-card-badges">
+          {app.doc_count > 0 && (
+            <span
+              className="app-doc-count"
+              title={`${app.doc_count} linked document${app.doc_count !== 1 ? "s" : ""}`}
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+              </svg>
+              {app.doc_count}
+            </span>
+          )}
+          <StatusPill status={app.job_status} onClick={() => onOpenStatusEditor(app)} />
+        </div>
       </div>
 
       <div className="app-meta">
-        {app.company} • {app.location}
+        {app.company} • {app.job_location}
       </div>
 
-      <div className="app-line">Next: {app.next}</div>
-      <div className="app-line">
-        Docs: {app.docs} • Contacts: {app.contacts}
-      </div>
+      <div className="app-line">{buildApplicationSummary(app)}</div>
+      <div className="app-line">{buildApplicationDetail(app)}</div>
 
-      <div className="app-actions" onClick={(e) => e.stopPropagation()}>
+      <div className="app-actions" onClick={(event) => event.stopPropagation()}>
         <button className="ghost-btn" type="button" onClick={() => onOpenDetails(app)}>
           View
         </button>
-        <button className="ghost-btn" type="button" disabled>
+        <button className="ghost-btn" type="button" onClick={onEdit}>
           Edit
         </button>
-        <button className="danger-btn" type="button" onClick={() => onDelete(app.id)}>
-          Delete
+        <button className="danger-btn" type="button" disabled={isDeleting} onClick={() => onDelete(app.application_id)}>
+          {isDeleting ? "Deleting..." : "Delete"}
         </button>
       </div>
     </article>
   );
 }
 
-export default function Dashboard({ onLogout }) {
-  const [applications, setApplications] = useState(SEED_APPLICATIONS);
-  const [reminders, setReminders] = useState([]);
+function DetailRow({ label, value }) {
+  return (
+    <div className="dashboard-detail-row">
+      <span className="dashboard-detail-label">{label}</span>
+      <span className="dashboard-detail-value">{value || "Not provided"}</span>
+    </div>
+  );
+}
 
+function ApplicationDetailModal({
+  application,
+  error,
+  isSaving,
+  isStatusFocused,
+  linkedDocuments,
+  isLoadingDocs,
+  onClose,
+  onSave,
+  onViewDocument,
+  onUnlinkDocument,
+  statusValue,
+  onStatusChange,
+}) {
+  if (!application) return null;
+
+  return (
+    <div
+      className="dashboard-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Application details for ${application.job_title}`}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isSaving) onClose();
+      }}
+    >
+      <div className="dashboard-modal-card">
+        <div className="dashboard-modal-head">
+          <div>
+            <h3 className="dashboard-modal-title">{application.job_title}</h3>
+            <p className="dashboard-modal-subtitle">
+              {application.company} • {application.job_location}
+            </p>
+          </div>
+          <button className="icon-btn" type="button" aria-label="Close" onClick={onClose} disabled={isSaving}>
+            ✕
+          </button>
+        </div>
+
+        <div className="dashboard-modal-body">
+          {error ? <div className="form-error">{error}</div> : null}
+
+          {isStatusFocused ? (
+            <div className="dashboard-inline-note">
+              Update the application status and save to apply the change immediately on the dashboard.
+            </div>
+          ) : null}
+
+          <div className="dashboard-detail-grid">
+            <DetailRow label="Position Type" value={toTitleCase(application.position_type)} />
+            <DetailRow label="Posting Date" value={formatDetailDate(application.posting_date)} />
+            <DetailRow label="Closing Date" value={formatDetailDate(application.closing_date)} />
+            <DetailRow label="Salary" value={formatSalary(application)} />
+            <DetailRow label="Job URL" value={application.job_url || "Not provided"} />
+          </div>
+
+          <label className="dashboard-status-field">
+            <span className="dashboard-detail-label">Job Status</span>
+            <select value={statusValue} onChange={(event) => onStatusChange(event.target.value)} disabled={isSaving}>
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {toTitleCase(option)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="dashboard-copy-block">
+            <span className="dashboard-detail-label">Job Description</span>
+            <p>{application.job_description || "No description saved."}</p>
+          </div>
+
+          <div className="dashboard-copy-block">
+            <span className="dashboard-detail-label">Application Notes</span>
+            <p>{application.application_notes || "No notes saved."}</p>
+          </div>
+
+          <div className="dashboard-copy-block">
+            <span className="dashboard-detail-label">Linked Documents</span>
+            {isLoadingDocs ? (
+              <p className="dashboard-docs-loading">Loading documents...</p>
+            ) : !linkedDocuments || linkedDocuments.length === 0 ? (
+              <p className="dashboard-docs-empty">No documents linked to this application.</p>
+            ) : (
+              <ul className="dashboard-doc-list">
+                {linkedDocuments.map((doc) => (
+                  <li key={doc.id} className="dashboard-doc-item">
+                    <span className="dashboard-doc-type">{toTitleCase(doc.documentType)}</span>
+                    <span className="dashboard-doc-name">{doc.fileName || doc.title}</span>
+                    <button
+                      className="ghost-btn"
+                      type="button"
+                      onClick={() => onViewDocument(doc.id)}
+                    >
+                      View
+                    </button>
+                    <button
+                      className="danger-btn"
+                      type="button"
+                      onClick={() => onUnlinkDocument(doc.id)}
+                    >
+                      Unlink
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="dashboard-modal-actions">
+            {application.job_url ? (
+              <a className="ghost-btn dashboard-modal-link" href={application.job_url} target="_blank" rel="noreferrer">
+                Open Job Link
+              </a>
+            ) : <span />}
+            <div className="dashboard-modal-actions-right">
+              <button className="ghost-btn" type="button" onClick={onClose} disabled={isSaving}>
+                Cancel
+              </button>
+              <button className="primary-btn" type="button" onClick={onSave} disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save Status"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard({
+  applications,
+  applicationsError,
+  hasLoadedApplications,
+  applicationsStatus,
+  onDeleteApplication,
+  onLogout,
+  onNavigate,
+  onUpdateApplication,
+}) {
+  const [reminders, setReminders] = useState([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [viewMode, setViewMode] = useState("cards");
-  const [userListCount, setUserListCount] = useState(null);
-
+  const [deleteError, setDeleteError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
+  const [selectedApplication, setSelectedApplication] = useState(null);
+  const [detailStatus, setDetailStatus] = useState("");
+  const [detailError, setDetailError] = useState("");
+  const [isSavingDetail, setIsSavingDetail] = useState(false);
+  const [detailMode, setDetailMode] = useState("view");
+  const [linkedDocuments, setLinkedDocuments] = useState(null);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
   const [isReminderDropdownOpen, setIsReminderDropdownOpen] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [reminderError, setReminderError] = useState("");
   const [reminderLoading, setReminderLoading] = useState(false);
   const [editingReminderId, setEditingReminderId] = useState(null);
-
   const [reminderForm, setReminderForm] = useState({
     title: "",
     category: "",
@@ -171,22 +381,29 @@ export default function Dashboard({ onLogout }) {
     notes: "",
   });
 
-  const reminderDropdownRef = useRef(null);
+  const viewedUrlsRef = useRef([]);
   const bellButtonRef = useRef(null);
+  const reminderDropdownRef = useRef(null);
 
   useEffect(() => {
-    async function loadProtectedData() {
-      try {
-        const res = await authenticatedFetch("/api/users");
-        const data = await res.json();
-        setUserListCount(Array.isArray(data.emails) ? data.emails.length : 0);
-      } catch (error) {
-        console.error("Protected fetch failed:", error);
-      }
+    if (!selectedApplication) return;
+
+    const nextSelectedApplication = applications.find(
+      (application) => application.application_id === selectedApplication.application_id,
+    );
+
+    if (!nextSelectedApplication) {
+      setSelectedApplication(null);
+      setDetailStatus("");
+      setDetailError("");
+      setIsSavingDetail(false);
+      setDetailMode("view");
+      return;
     }
 
-    loadProtectedData();
-  }, []);
+    setSelectedApplication(nextSelectedApplication);
+    setDetailStatus(nextSelectedApplication.job_status);
+  }, [applications, selectedApplication]);
 
   useEffect(() => {
     async function loadReminders() {
@@ -205,10 +422,10 @@ export default function Dashboard({ onLogout }) {
     function handleClickOutside(event) {
       if (!isReminderDropdownOpen) return;
 
-      const clickedInsideDropdown = reminderDropdownRef.current?.contains(event.target);
       const clickedBell = bellButtonRef.current?.contains(event.target);
+      const clickedDropdown = reminderDropdownRef.current?.contains(event.target);
 
-      if (!clickedInsideDropdown && !clickedBell) {
+      if (!clickedBell && !clickedDropdown) {
         setIsReminderDropdownOpen(false);
       }
     }
@@ -219,32 +436,40 @@ export default function Dashboard({ onLogout }) {
     };
   }, [isReminderDropdownOpen]);
 
-  const metrics = useMemo(() => {
-    return {
-      totalApplications: applications.length,
-      activeContacts: applications.reduce((sum, a) => sum + (a.contacts || 0), 0),
-      setReminders: reminders.length,
-    };
-  }, [applications, reminders]);
+  const metrics = useMemo(() => ({
+    totalApplications: applications.length,
+    activeInterviews: applications.filter(
+      (application) => normalize(application.job_status) === "interviewing",
+    ).length,
+  }), [applications]);
 
   const filteredApplications = useMemo(() => {
     const q = normalize(query);
 
-    let list = applications.filter((a) => {
+    let list = applications.filter((application) => {
       const matchesQuery =
         !q ||
-        normalize(a.title).includes(q) ||
-        normalize(a.company).includes(q) ||
-        normalize(a.location).includes(q);
+        normalize(application.job_title).includes(q) ||
+        normalize(application.company).includes(q) ||
+        normalize(application.job_location).includes(q);
 
-      const matchesStatus = statusFilter === "all" ? true : normalize(a.status) === statusFilter;
+      const matchesStatus =
+        statusFilter === "all" ? true : normalize(application.job_status) === statusFilter;
 
       return matchesQuery && matchesStatus;
     });
 
-    if (sortBy === "oldest") list = [...list].reverse();
-    if (sortBy === "company") list = [...list].sort((x, y) => x.company.localeCompare(y.company));
-    if (sortBy === "status") list = [...list].sort((x, y) => x.status.localeCompare(y.status));
+    if (sortBy === "oldest") {
+      list = [...list].sort((left, right) => left.application_id - right.application_id);
+    }
+
+    if (sortBy === "company") {
+      list = [...list].sort((left, right) => left.company.localeCompare(right.company));
+    }
+
+    if (sortBy === "status") {
+      list = [...list].sort((left, right) => left.job_status.localeCompare(right.job_status));
+    }
 
     return list;
   }, [applications, query, statusFilter, sortBy]);
@@ -268,23 +493,25 @@ export default function Dashboard({ onLogout }) {
   function openCreateReminderModal() {
     resetReminderForm();
     setIsReminderModalOpen(true);
+    setIsReminderDropdownOpen(false);
   }
 
   function closeReminderModal() {
+    if (reminderLoading) return;
     resetReminderForm();
     setIsReminderModalOpen(false);
   }
 
-  function handleReminderInputChange(e) {
-    const { name, value } = e.target;
+  function handleReminderInputChange(event) {
+    const { name, value } = event.target;
     setReminderForm((prev) => ({
       ...prev,
       [name]: value,
     }));
   }
 
-  async function handleReminderSubmit(e) {
-    e.preventDefault();
+  async function handleReminderSubmit(event) {
+    event.preventDefault();
     setReminderLoading(true);
     setReminderError("");
 
@@ -292,7 +519,9 @@ export default function Dashboard({ onLogout }) {
       if (editingReminderId) {
         const data = await updateReminder(editingReminderId, reminderForm);
         setReminders((prev) =>
-          prev.map((r) => (r.Reminder_ID === editingReminderId ? data.reminder : r))
+          prev.map((reminder) =>
+            reminder.Reminder_ID === editingReminderId ? data.reminder : reminder
+          )
         );
       } else {
         const data = await createReminder(reminderForm);
@@ -301,7 +530,7 @@ export default function Dashboard({ onLogout }) {
 
       closeReminderModal();
     } catch (error) {
-      setReminderError(error.message);
+      setReminderError(error.message || "Failed to save reminder.");
     } finally {
       setReminderLoading(false);
     }
@@ -321,76 +550,143 @@ export default function Dashboard({ onLogout }) {
       notes: reminder.Reminder_Notes || "",
     });
     setReminderError("");
-    setIsReminderDropdownOpen(false);
     setIsReminderModalOpen(true);
+    setIsReminderDropdownOpen(false);
   }
 
   async function handleDeleteReminder(reminderId) {
     try {
       await deleteReminder(reminderId);
-      setReminders((prev) => prev.filter((r) => r.Reminder_ID !== reminderId));
+      setReminders((prev) => prev.filter((reminder) => reminder.Reminder_ID !== reminderId));
     } catch (error) {
-      window.alert(error.message);
+      window.alert(error.message || "Failed to delete reminder.");
     }
   }
 
-  function handleAddApplication() {
-    const nextId = Math.max(0, ...applications.map((a) => a.id)) + 1;
-    const newApp = {
-      id: nextId,
-      title: "New Application",
-      company: "Company",
-      location: "Location",
-      status: "Saved",
-      next: "Set next step",
-      docs: 0,
-      contacts: 0,
-    };
-    setApplications((prev) => [newApp, ...prev]);
+  async function handleDelete(applicationId) {
+    setDeleteError("");
+    setDeletingId(applicationId);
+
+    try {
+      await onDeleteApplication?.(applicationId);
+    } catch (error) {
+      setDeleteError(error?.message || "Unable to delete application.");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
-  function handleOpenDetails(app) {
-    window.alert(`Detailed Job View (prototype)\n\n${app.title}\n${app.company} • ${app.location}`);
+  function openApplicationDetail(application, mode) {
+    setSelectedApplication(application);
+    setDetailStatus(application.job_status);
+    setDetailError("");
+    setDetailMode(mode);
+    setLinkedDocuments(null);
+    setIsLoadingDocs(true);
+    fetchDocumentsForApplication(application.application_id)
+      .then((docs) => setLinkedDocuments(docs))
+      .catch(() => setLinkedDocuments([]))
+      .finally(() => setIsLoadingDocs(false));
   }
 
-  function handleDelete(appId) {
-    setApplications((prev) => prev.filter((a) => a.id !== appId));
+  function handleOpenDetails(application) {
+    openApplicationDetail(application, "view");
   }
 
-  function handleRefresh() {
-    setApplications(SEED_APPLICATIONS);
+  function handleOpenStatusEditor(application) {
+    openApplicationDetail(application, "status");
+  }
+
+  function handleCloseDetails() {
+    if (isSavingDetail) return;
+    viewedUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    viewedUrlsRef.current = [];
+    setSelectedApplication(null);
+    setDetailStatus("");
+    setDetailError("");
+    setDetailMode("view");
+    setLinkedDocuments(null);
+    setIsLoadingDocs(false);
+  }
+
+  async function handleSaveStatus() {
+    if (!selectedApplication) return;
+
+    setDetailError("");
+    setIsSavingDetail(true);
+
+    try {
+      await onUpdateApplication?.(
+        selectedApplication.application_id,
+        buildUpdatePayload(selectedApplication, detailStatus),
+      );
+      handleCloseDetails();
+    } catch (error) {
+      setDetailError(error?.message || "Unable to update status.");
+    } finally {
+      setIsSavingDetail(false);
+    }
+  }
+
+  async function handleViewDocument(documentId) {
+    try {
+      const blob = await fetchDocumentBlob(documentId);
+      const url = URL.createObjectURL(blob);
+      viewedUrlsRef.current.push(url);
+      window.open(url, "_blank");
+    } catch (error) {
+      setDetailError(error?.message || "Could not open document.");
+    }
+  }
+
+  async function handleUnlinkDocument(documentId) {
+    if (!selectedApplication) return;
+    try {
+      await unlinkDocumentFromApplication(documentId, selectedApplication.application_id);
+      setLinkedDocuments((prev) => (prev ?? []).filter((doc) => doc.id !== documentId));
+    } catch (error) {
+      setDetailError(error?.message || "Could not unlink document.");
+    }
+  }
+
+  function handleResetView() {
     setQuery("");
     setStatusFilter("all");
     setSortBy("newest");
     setViewMode("cards");
+    setDeleteError("");
   }
 
   const iconBtnInline = { lineHeight: 0 };
   const iconSvgInline = { display: "block" };
+  const isLoading = applicationsStatus === "loading";
+  const hasLoadError =
+    hasLoadedApplications && applicationsStatus === "error" && Boolean(applicationsError);
 
   return (
     <>
       <header className="top-nav">
         <div className="top-nav-inner">
           <div className="brand">
-            <span className="brand-dot" aria-hidden="true" />
-            <span className="brand-name">LockedIn Tracker</span>
+            <img className="brand-logo" src={lockedInLogo} alt="LockedIn" />
           </div>
 
           <nav className="nav-links" aria-label="Primary">
-            <a className="nav-link is-active" href="#">
+            <button className="nav-link is-active" type="button" onClick={() => onNavigate?.("dashboard")}>
               Dashboard
-            </a>
-            <a className="nav-link" href="#">
+            </button>
+            <button className="nav-link" type="button" onClick={() => onNavigate?.("applications")}>
               Applications
-            </a>
-            <span className="nav-link">Reminders</span>
-            <a className="nav-link" href="#">
+            </button>
+            <button className="nav-link" type="button" onClick={() => onNavigate?.("reminders")}>
+              Reminders
+            </button>
+            <button className="nav-link" type="button" onClick={() => onNavigate?.("contacts")}>
               Contacts
-            </a>
-            <a className="nav-link" href="#">
+            </button>
+            <button className="nav-link" type="button" onClick={() => onNavigate?.("documents")}>
               Documents
-            </a>
+            </button>
           </nav>
 
           <div className="nav-actions" aria-label="Utilities">
@@ -458,43 +754,78 @@ export default function Dashboard({ onLogout }) {
                 </div>
 
                 <div className="reminder-dropdown-list">
-                  {!reminders.length ? (
-                    <div className="reminder-empty-state">No reminders yet.</div>
-                  ) : (
-                    reminders.map((reminder) => (
-                      <div className="reminder-dropdown-item" key={reminder.Reminder_ID}>
-                        <div className="reminder-dropdown-item-main">
-                          <div className="reminder-dropdown-item-title">{reminder.Reminder_Title}</div>
-                          <div className="reminder-dropdown-item-meta">
-                            {formatReminderDate(reminder.Reminder_Due_Date)} •{" "}
-                            {formatReminderTime(reminder.Reminder_Due_Time)}
-                            {reminder.Reminder_Company ? ` • ${reminder.Reminder_Company}` : ""}
-                          </div>
-                          {reminder.Reminder_Notes ? (
-                            <div className="reminder-dropdown-item-notes">{reminder.Reminder_Notes}</div>
-                          ) : null}
-                        </div>
+                    {!reminders.length ? (
+                      <div className="reminder-empty-state">No reminders yet.</div>
+                    ) : (
+                      reminders.map((reminder) => (
+                        <div className="reminder-dropdown-item" key={reminder.Reminder_ID}>
+                          <div className="reminder-dropdown-item-main">
+                            <div className="reminder-dropdown-item-top">
+                              <div>
+                                <div className="reminder-dropdown-item-title">{reminder.Reminder_Title}</div>
+                                <div className="reminder-dropdown-item-meta">
+                                  {formatReminderDate(reminder.Reminder_Due_Date)}
+                                  {reminder.Reminder_Due_Time ? ` • ${formatReminderTime(reminder.Reminder_Due_Time)}` : ""}
+                                  {reminder.Reminder_Company ? ` • ${reminder.Reminder_Company}` : ""}
+                                </div>
+                                {reminder.Reminder_Notes ? (
+                                  <div className="reminder-dropdown-item-notes">{reminder.Reminder_Notes}</div>
+                                ) : null}
+                              </div>
 
-                        <div className="reminder-dropdown-item-actions">
-                          <button
-                            className="ghost-btn"
-                            type="button"
-                            onClick={() => handleEditReminder(reminder)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="danger-btn"
-                            type="button"
-                            onClick={() => handleDeleteReminder(reminder.Reminder_ID)}
-                          >
-                            Delete
-                          </button>
+                              <div className="reminder-dropdown-item-actions reminder-dropdown-item-actions--icons">
+                                <button
+                                  className="reminder-icon-btn"
+                                  type="button"
+                                  aria-label="Edit reminder"
+                                  title="Edit"
+                                  onClick={() => handleEditReminder(reminder)}
+                                >
+                                  <svg
+                                    width="15"
+                                    height="15"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M12 20h9" />
+                                    <path d="M16.5 3.5a2.12 2.12 0 113 3L7 19l-4 1 1-4 12.5-12.5z" />
+                                  </svg>
+                                </button>
+
+                                <button
+                                  className="reminder-icon-btn reminder-icon-btn--danger"
+                                  type="button"
+                                  aria-label="Delete reminder"
+                                  title="Delete"
+                                  onClick={() => handleDeleteReminder(reminder.Reminder_ID)}
+                                >
+                                  <svg
+                                    width="15"
+                                    height="15"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M18 6L6 18" />
+                                    <path d="M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+                      ))
+                    )}
+                  </div>
               </div>
             )}
 
@@ -551,18 +882,8 @@ export default function Dashboard({ onLogout }) {
           </div>
 
           <div className="metric-card">
-            <div className="metric-label">Active Contacts</div>
-            <div className="metric-value">{metrics.activeContacts}</div>
-          </div>
-
-          <div className="metric-card metric-card--hide-on-dashboard">
-            <div className="metric-label">Set Reminders</div>
-            <div className="metric-value">{metrics.setReminders}</div>
-          </div>
-
-          <div className="metric-card">
-            <div className="metric-label">Registered Users</div>
-            <div className="metric-value">{userListCount ?? "..."}</div>
+            <div className="metric-label">Active Interviews</div>
+            <div className="metric-value">{metrics.activeInterviews}</div>
           </div>
         </section>
 
@@ -572,7 +893,7 @@ export default function Dashboard({ onLogout }) {
               <input
                 type="search"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search company, title, location..."
                 aria-label="Search"
               />
@@ -581,7 +902,7 @@ export default function Dashboard({ onLogout }) {
             <div className="control">
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(event) => setStatusFilter(event.target.value)}
                 aria-label="Status filter"
               >
                 <option value="all">Status: All</option>
@@ -593,14 +914,14 @@ export default function Dashboard({ onLogout }) {
               </select>
             </div>
 
-            <button className="primary-btn" type="button" onClick={handleAddApplication}>
+            <button className="primary-btn" type="button" onClick={() => onNavigate?.("applications")}>
               + Add Application
             </button>
           </div>
 
           <div className="controls-row controls-row--secondary">
             <div className="control">
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sort">
+              <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} aria-label="Sort">
                 <option value="newest">Sort: Newest</option>
                 <option value="oldest">Oldest</option>
                 <option value="company">Company</option>
@@ -609,7 +930,7 @@ export default function Dashboard({ onLogout }) {
             </div>
 
             <div className="control">
-              <select value={viewMode} onChange={(e) => setViewMode(e.target.value)} aria-label="View">
+              <select value={viewMode} onChange={(event) => setViewMode(event.target.value)} aria-label="View">
                 <option value="cards">View: Cards</option>
                 <option value="table" disabled>
                   Table (later)
@@ -627,12 +948,15 @@ export default function Dashboard({ onLogout }) {
             </div>
 
             <div className="session-actions" aria-label="Session actions">
-              <button className="ghost-btn" type="button" onClick={handleRefresh}>
-                Refresh
+              <button className="ghost-btn" type="button" onClick={handleResetView}>
+                Reset View
               </button>
             </div>
           </div>
         </section>
+
+        {deleteError ? <div className="form-error">{deleteError}</div> : null}
+        {hasLoadError ? <div className="form-error">{applicationsError}</div> : null}
 
         <section className="content" aria-label="Dashboard content">
           <section aria-label="Job applications">
@@ -651,14 +975,22 @@ export default function Dashboard({ onLogout }) {
                 <div className="empty-title">Table view is coming later.</div>
                 <div className="empty-subtitle">For now, switch back to Cards.</div>
               </div>
+            ) : isLoading ? (
+              <div className="empty-state">
+                <div className="empty-title">Loading applications...</div>
+                <div className="empty-subtitle">Fetching your saved jobs from the backend.</div>
+              </div>
             ) : filteredApplications.length ? (
               <div className="cards">
-                {filteredApplications.map((app) => (
+                {filteredApplications.map((application) => (
                   <ApplicationCard
-                    key={app.id}
-                    app={app}
-                    onOpenDetails={handleOpenDetails}
+                    key={application.application_id}
+                    app={application}
+                    deletingId={deletingId}
                     onDelete={handleDelete}
+                    onEdit={() => onNavigate?.("applications", { editingId: application.application_id })}
+                    onOpenDetails={handleOpenDetails}
+                    onOpenStatusEditor={handleOpenStatusEditor}
                   />
                 ))}
               </div>
@@ -672,14 +1004,37 @@ export default function Dashboard({ onLogout }) {
         </section>
       </main>
 
-      {isReminderModalOpen && (
-        <div className="reminder-modal-backdrop" onClick={closeReminderModal}>
+      {selectedApplication ? (
+        <ApplicationDetailModal
+          application={selectedApplication}
+          error={detailError}
+          isSaving={isSavingDetail}
+          isStatusFocused={detailMode === "status"}
+          linkedDocuments={linkedDocuments}
+          isLoadingDocs={isLoadingDocs}
+          onClose={handleCloseDetails}
+          onSave={handleSaveStatus}
+          onViewDocument={handleViewDocument}
+          onUnlinkDocument={handleUnlinkDocument}
+          onStatusChange={setDetailStatus}
+          statusValue={detailStatus}
+        />
+      ) : null}
+
+      {isReminderModalOpen ? (
+        <div
+          className="reminder-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeReminderModal();
+            }
+          }}
+        >
           <div
             className="reminder-modal"
             role="dialog"
             aria-modal="true"
             aria-label={editingReminderId ? "Edit reminder" : "Create reminder"}
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="reminder-modal-header">
               <div>
@@ -687,9 +1042,7 @@ export default function Dashboard({ onLogout }) {
                   {editingReminderId ? "Edit Reminder" : "Create Reminder"}
                 </h2>
                 <p className="reminder-modal-subtitle">
-                  {editingReminderId
-                    ? "Update your reminder details"
-                    : "Add a new reminder for your job search"}
+                  {editingReminderId ? "Update your reminder details" : "Add a new reminder for your job search"}
                 </p>
               </div>
 
@@ -812,7 +1165,7 @@ export default function Dashboard({ onLogout }) {
             </form>
           </div>
         </div>
-      )}
+      ) : null}
     </>
   );
 }
