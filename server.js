@@ -224,7 +224,6 @@ function validateReminderPayload(reminder) {
 
   if (!reminder.title) errors.push('Reminder title is required.');
   if (!reminder.dueDate) errors.push('Reminder due date is required.');
-  if (!reminder.dueTime) errors.push('Reminder due time is required.');
 
   if (reminder.dueDate && Number.isNaN(Date.parse(reminder.dueDate))) {
     errors.push('Reminder due date must be a valid date.');

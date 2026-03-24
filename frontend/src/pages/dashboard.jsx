@@ -826,6 +826,19 @@ export default function Dashboard({
                       ))
                     )}
                   </div>
+
+                  <div className="reminder-dropdown-footer">
+                    <button
+                      className="ghost-btn reminder-view-all-btn"
+                      type="button"
+                      onClick={() => {
+                        setIsReminderDropdownOpen(false);
+                        onNavigate?.("reminders");
+                      }}
+                    >
+                      View All Reminders →
+                    </button>
+                  </div>
               </div>
             )}
 
@@ -884,6 +897,11 @@ export default function Dashboard({
           <div className="metric-card">
             <div className="metric-label">Active Interviews</div>
             <div className="metric-value">{metrics.activeInterviews}</div>
+          </div>
+
+          <div className="metric-card">
+            <div className="metric-label">Set Reminders</div>
+            <div className="metric-value">{reminders.length}</div>
           </div>
         </section>
 
@@ -1001,6 +1019,41 @@ export default function Dashboard({
               </div>
             )}
           </section>
+
+          <aside className="upcoming-reminders-sidebar" aria-label="Upcoming reminders">
+            <div className="upcoming-reminders-header">
+              <h2 className="upcoming-reminders-title">Upcoming Reminders</h2>
+              <button
+                className="ghost-btn upcoming-reminders-manage-btn"
+                type="button"
+                onClick={() => onNavigate?.("reminders")}
+              >
+                Manage →
+              </button>
+            </div>
+
+            {!reminders.length ? (
+              <div className="upcoming-reminders-empty">No reminders yet.</div>
+            ) : (
+              <ul className="upcoming-reminders-list">
+                {reminders
+                  .slice()
+                  .sort((a, b) => {
+                    const da = a.Reminder_Due_Date ? new Date(a.Reminder_Due_Date).getTime() : Infinity;
+                    const db = b.Reminder_Due_Date ? new Date(b.Reminder_Due_Date).getTime() : Infinity;
+                    return da - db;
+                  })
+                  .map((reminder) => (
+                    <li key={reminder.Reminder_ID} className="upcoming-reminder-item">
+                      <span className="upcoming-reminder-date">
+                        {formatReminderDate(reminder.Reminder_Due_Date)}
+                      </span>
+                      <span className="upcoming-reminder-title">{reminder.Reminder_Title}</span>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </aside>
         </section>
       </main>
 
