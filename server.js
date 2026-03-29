@@ -1183,11 +1183,11 @@ function toContactRecord(body, email) {
     name: String(body.name || '').trim(),
     company: String(body.company || '').trim(),
     role: normalizeOptionalString(body.role),
-    relationshipStrength: String(body.relationshipStrength || 'warm').trim(),
+    relationshipStrength: String(body.relationshipStrength || 'warm').trim().toLowerCase(),
     contactEmail: normalizeOptionalString(body.contactEmail),
     phone: normalizeOptionalString(body.phone),
     linkedin: normalizeOptionalString(body.linkedin),
-    preferredCommunication: String(body.preferredCommunication || 'email').trim(),
+    preferredCommunication: String(body.preferredCommunication || 'email').trim().toLowerCase(),
     lastContactedDate: body.lastContactedDate || null,
     nextFollowupDate: body.nextFollowupDate || null,
     notes: normalizeOptionalString(body.notes),
@@ -1206,6 +1206,18 @@ function validateContactPayload(contact) {
   }
   if (!VALID_COMMUNICATION_PREFERENCES.includes(contact.preferredCommunication)) {
     errors.push('Invalid communication preference.');
+  }
+  if (contact.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.contactEmail)) {
+    errors.push('Contact email must be valid.');
+  }
+  if (contact.linkedin) {
+    try { new URL(contact.linkedin); } catch { errors.push('LinkedIn URL must be valid.'); }
+  }
+  if (contact.lastContactedDate && Number.isNaN(Date.parse(contact.lastContactedDate))) {
+    errors.push('Last contacted date must be a valid date.');
+  }
+  if (contact.nextFollowupDate && Number.isNaN(Date.parse(contact.nextFollowupDate))) {
+    errors.push('Next follow-up date must be a valid date.');
   }
   return errors;
 }
