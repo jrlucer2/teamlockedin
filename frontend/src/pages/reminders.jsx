@@ -1,46 +1,49 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
 import "../styles/dashboard.css";
 import "../styles/reminders.css";
+import { getReminders, createReminder, updateReminder, deleteReminder as apiDeleteReminder } from "../lib/api";
 
-const SEED_REMINDERS = [
-  {
-    id: 1,
-    title: "Google SWE intern interview prep",
-    category: "interview",
-    status: "pending",
-    priority: "high",
-    dueDate: "2026-03-05",
-    dueTime: "10:00",
-    company: "Google",
-    role: "Software Engineer Intern",
-    notes: "Review system design and behavioral stories.",
-  },
-  {
-    id: 2,
-    title: "Amazon follow-up email",
-    category: "follow_up",
-    status: "done",
-    priority: "medium",
-    dueDate: "2026-03-01",
-    dueTime: "15:00",
-    company: "Amazon",
-    role: "Marketing Coordinator",
-    notes: "Thank recruiter and ask for timeline.",
-  },
-  {
-    id: 3,
-    title: "Request reference letter",
-    category: "reference",
-    status: "pending",
-    priority: "urgent",
-    dueDate: "2026-03-03",
-    dueTime: "09:30",
-    company: "Microsoft",
-    role: "Project Manager",
-    notes: "Send draft bullet points to recommender.",
-  },
-];
+const CATEGORY_TO_API = {
+  interview: "Interview",
+  follow_up: "Follow-up",
+  reference: "Reference",
+  deadline: "Deadline",
+  networking: "Networking",
+};
+
+const PRIORITY_TO_API = { low: "Low", medium: "Medium", high: "High", urgent: "Urgent" };
+const STATUS_TO_API = { pending: "Pending", done: "Done" };
+
+function fromBackend(row) {
+  const cat = (row.Reminder_Category || "").toLowerCase().replace(/-/g, "_");
+  return {
+    id: row.Reminder_ID,
+    title: row.Reminder_Title || "",
+    category: cat,
+    priority: (row.Reminder_Priority || "medium").toLowerCase(),
+    status: (row.Reminder_Status || "pending").toLowerCase(),
+    dueDate: row.Reminder_Due_Date ? String(row.Reminder_Due_Date).split("T")[0] : "",
+    dueTime: row.Reminder_Due_Time ? String(row.Reminder_Due_Time).slice(0, 5) : "",
+    company: row.Reminder_Company || "",
+    role: row.Reminder_Role || "",
+    notes: row.Reminder_Notes || "",
+  };
+}
+
+function toApiPayload(local) {
+  return {
+    title: local.title,
+    category: CATEGORY_TO_API[local.category] || local.category,
+    priority: PRIORITY_TO_API[local.priority] || local.priority,
+    status: STATUS_TO_API[local.status] || local.status,
+    dueDate: local.dueDate || null,
+    dueTime: local.dueTime || null,
+    company: local.company || null,
+    role: local.role || null,
+    notes: local.notes || null,
+  };
+}
 
 const INITIAL_FORM = {
   id: null,
@@ -223,7 +226,9 @@ function ReminderForm({ initial, onSave, onCancel }) {
 }
 
 export default function Reminders({ onLogout, onNavigate }) {
-  const [reminders, setReminders] = useState(SEED_REMINDERS);
+  const [reminders, setReminders] = useState([]);
+  const [loadingReminders, setLoadingReminders] = useState(true);
+  const [remindersError, setRemindersError] = useState("");
 
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -267,6 +272,19 @@ export default function Reminders({ onLogout, onNavigate }) {
     return list;
   }, [reminders, query, categoryFilter, statusFilter, priorityFilter, sortBy]);
 
+  useEffect(() => {
+    setLoadingReminders(true);
+    setRemindersError("");
+    getReminders()
+      .then((data) => {
+        setReminders(Array.isArray(data.reminders) ? data.reminders.map(fromBackend) : []);
+      })
+      .catch((err) => {
+        setRemindersError(err.message || "Failed to load reminders.");
+      })
+      .finally(() => setLoadingReminders(false));
+  }, []);
+
   function openCreateModal() {
     setModalState({ open: true, editing: null });
   }
@@ -279,38 +297,46 @@ export default function Reminders({ onLogout, onNavigate }) {
     setModalState({ open: false, editing: null });
   }
 
-  function saveReminder(payload) {
-    if (payload.id == null) {
-      const nextId = Math.max(0, ...reminders.map((item) => item.id)) + 1;
-      setReminders((prev) => [{ ...payload, id: nextId }, ...prev]);
-    } else {
-      setReminders((prev) => prev.map((item) => (item.id === payload.id ? payload : item)));
+  async function saveReminder(payload) {
+    try {
+      if (payload.id == null) {
+        const data = await createReminder(toApiPayload(payload));
+        setReminders((prev) => [fromBackend(data.reminder), ...prev]);
+      } else {
+        const data = await updateReminder(payload.id, toApiPayload(payload));
+        setReminders((prev) => prev.map((item) => (item.id === payload.id ? fromBackend(data.reminder) : item)));
+      }
+      closeModal();
+    } catch (err) {
+      window.alert(err.message || "Failed to save reminder.");
     }
-
-    closeModal();
   }
 
   function confirmDelete(reminder) {
     setDeleteTarget(reminder);
   }
 
-  function deleteReminder() {
+  async function deleteReminder() {
     if (!deleteTarget) return;
-    setReminders((prev) => prev.filter((item) => item.id !== deleteTarget.id));
-    setDeleteTarget(null);
+    try {
+      await apiDeleteReminder(deleteTarget.id);
+      setReminders((prev) => prev.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      window.alert(err.message || "Failed to delete reminder.");
+    }
   }
 
-  function toggleReminderStatus(reminderId) {
-    setReminders((prev) =>
-      prev.map((item) =>
-        item.id === reminderId
-          ? {
-              ...item,
-              status: item.status === "done" ? "pending" : "done",
-            }
-          : item
-      )
-    );
+  async function toggleReminderStatus(reminderId) {
+    const item = reminders.find((r) => r.id === reminderId);
+    if (!item) return;
+    const newStatus = item.status === "done" ? "pending" : "done";
+    try {
+      const data = await updateReminder(reminderId, toApiPayload({ ...item, status: newStatus }));
+      setReminders((prev) => prev.map((r) => (r.id === reminderId ? fromBackend(data.reminder) : r)));
+    } catch (err) {
+      window.alert(err.message || "Failed to update reminder.");
+    }
   }
 
   const pendingCount = reminders.filter((item) => item.status === "pending").length;
@@ -421,7 +447,11 @@ export default function Reminders({ onLogout, onNavigate }) {
         </section>
 
         <section className="reminders-list" aria-label="Reminder items">
-          {!filtered.length ? (
+          {loadingReminders ? (
+            <div className="reminders-empty">Loading reminders…</div>
+          ) : remindersError ? (
+            <div className="reminders-empty">{remindersError}</div>
+          ) : !filtered.length ? (
             <div className="reminders-empty">No reminders match the current filters.</div>
           ) : (
             filtered.map((item) => (
