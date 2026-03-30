@@ -1043,6 +1043,7 @@ export default function Dashboard({
             metricValue={allMetrics[metricSelections[2]]}
             onSelect={(key) => setMetricSelections((prev) => [prev[0], prev[1], key])}
           />
+        </section>
         {/*<section className="metrics" aria-label="Key metrics">
           {cardStats.map((selectedStat, index) => (
             <div className="metric-card" key={index}>
@@ -1062,13 +1063,6 @@ export default function Dashboard({
           ))}
         </section>
         */}
-
-        <section className="metrics" aria-label="Key metrics">
-          <div className="metric-card">
-            <div className="metric-label">Set Reminders</div>
-            <div className="metric-value">{reminders.length}</div>
-          </div>
-        </section>
 
         <section className="controls" aria-label="Dashboard controls">
           <div className="controls-row">

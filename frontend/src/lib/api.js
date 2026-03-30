@@ -140,6 +140,8 @@ export async function deleteContact(contactId) {
     throw new Error(message);
   }
   return true;
+}
+
 export async function getNotifications() {
   const response = await authenticatedFetch('/api/notifications');
   if (!response.ok) throw new Error('Failed to load notifications.');
