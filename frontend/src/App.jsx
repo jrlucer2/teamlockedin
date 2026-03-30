@@ -230,6 +230,16 @@ export default function App() {
     );
   }
 
+  function handleDecrementDocCount(applicationId) {
+    setApplications((prev) =>
+      prev.map((app) =>
+        app.application_id === applicationId
+          ? { ...app, doc_count: Math.max(0, (app.doc_count || 0) - 1) }
+          : app,
+      ),
+    );
+  }
+
   function handleNavigate(page, options = {}) {
     setCurrentPage(page);
     setPageState({
@@ -289,6 +299,17 @@ export default function App() {
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   return (
+    <Dashboard
+      applications={applications}
+      applicationsError={applicationsError}
+      hasLoadedApplications={hasLoadedApplications}
+      applicationsStatus={applicationsStatus}
+      onDeleteApplication={handleDeleteApplication}
+      onDecrementDocCount={handleDecrementDocCount}
+      onLogout={handleLogout}
+      onNavigate={handleNavigate}
+      onUpdateApplication={handleUpdateApplication}
+    />
     <>
       <Dashboard
         applications={applications}
