@@ -1,52 +1,41 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
 import "../styles/dashboard.css";
 import "../styles/contacts.css";
+import { getContacts, createContact, updateContact, deleteContact as apiDeleteContact } from "../lib/api";
 
-const SEED_CONTACTS = [
-  {
-    id: 1,
-    name: "Ari Kim",
-    company: "Google",
-    role: "Recruiter",
-    email: "ari.kim@example.com",
-    phone: "(555) 210-1192",
-    linkedin: "https://www.linkedin.com/in/ari-kim",
-    relationshipStrength: "warm",
-    communicationPreference: "email",
-    lastContactedDate: "2026-02-28",
-    nextFollowUpDate: "2026-03-04",
-    notes: "Prefers concise updates. Mentioned team fit interview round.",
-  },
-  {
-    id: 2,
-    name: "Miguel Torres",
-    company: "Amazon",
-    role: "Hiring Manager",
-    email: "miguel.torres@example.com",
-    phone: "(555) 900-3378",
-    linkedin: "",
-    relationshipStrength: "strong",
-    communicationPreference: "phone",
-    lastContactedDate: "2026-02-25",
-    nextFollowUpDate: "2026-03-02",
-    notes: "Wants follow-up after portfolio update.",
-  },
-  {
-    id: 3,
-    name: "Priya Nair",
-    company: "Microsoft",
-    role: "Reference",
-    email: "priya.nair@example.com",
-    phone: "",
-    linkedin: "https://www.linkedin.com/in/priya-nair",
-    relationshipStrength: "advocate",
-    communicationPreference: "linkedin",
-    lastContactedDate: "2026-02-20",
-    nextFollowUpDate: "2026-03-06",
-    notes: "Offered to introduce me to product team contact.",
-  },
-];
+function fromBackend(row) {
+  return {
+    id: row.contact_id,
+    name: row.contact_name || "",
+    company: row.contact_company || "",
+    role: row.contact_role || "",
+    email: row.contact_email || "",
+    phone: row.contact_phone || "",
+    linkedin: row.contact_linkedin || "",
+    relationshipStrength: (row.relationship_strength || "warm").toLowerCase(),
+    communicationPreference: (row.preferred_communication || "email").toLowerCase(),
+    lastContactedDate: row.last_contacted_date ? String(row.last_contacted_date).split("T")[0] : "",
+    nextFollowUpDate: row.next_followup_date ? String(row.next_followup_date).split("T")[0] : "",
+    notes: row.contact_notes || "",
+  };
+}
+
+function toApiPayload(local) {
+  return {
+    name: local.name,
+    company: local.company,
+    role: local.role || null,
+    contactEmail: local.email || null,
+    phone: local.phone || null,
+    linkedin: local.linkedin || null,
+    relationshipStrength: local.relationshipStrength,
+    preferredCommunication: local.communicationPreference,
+    lastContactedDate: local.lastContactedDate || null,
+    nextFollowupDate: local.nextFollowUpDate || null,
+    notes: local.notes || null,
+  };
+}
 
 const INITIAL_FORM = {
   id: null,
@@ -281,7 +270,9 @@ function ContactForm({ initial, onSave, onCancel }) {
 }
 
 export default function Contacts({ onLogout, onNavigate }) {
-  const [contacts, setContacts] = useState(SEED_CONTACTS);
+  const [contacts, setContacts] = useState([]);
+  const [loadingContacts, setLoadingContacts] = useState(true);
+  const [contactsError, setContactsError] = useState("");
 
   const [query, setQuery] = useState("");
   const [relationshipFilter, setRelationshipFilter] = useState("all");
@@ -290,6 +281,19 @@ export default function Contacts({ onLogout, onNavigate }) {
 
   const [modalState, setModalState] = useState({ open: false, editing: null });
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  useEffect(() => {
+    setLoadingContacts(true);
+    setContactsError("");
+    getContacts()
+      .then((data) => {
+        setContacts(Array.isArray(data.contacts) ? data.contacts.map(fromBackend) : []);
+      })
+      .catch((err) => {
+        setContactsError(err.message || "Failed to load contacts.");
+      })
+      .finally(() => setLoadingContacts(false));
+  }, []);
 
   const filtered = useMemo(() => {
     const q = normalize(query);
@@ -340,39 +344,46 @@ export default function Contacts({ onLogout, onNavigate }) {
     setModalState({ open: false, editing: null });
   }
 
-  function saveContact(payload) {
-    if (payload.id == null) {
-      const nextId = Math.max(0, ...contacts.map((item) => item.id)) + 1;
-      setContacts((prev) => [{ ...payload, id: nextId }, ...prev]);
-    } else {
-      setContacts((prev) => prev.map((item) => (item.id === payload.id ? payload : item)));
+  async function saveContact(payload) {
+    try {
+      if (payload.id == null) {
+        const data = await createContact(toApiPayload(payload));
+        setContacts((prev) => [fromBackend(data.contact), ...prev]);
+      } else {
+        const data = await updateContact(payload.id, toApiPayload(payload));
+        setContacts((prev) => prev.map((item) => (item.id === payload.id ? fromBackend(data.contact) : item)));
+      }
+      closeModal();
+    } catch (err) {
+      window.alert(err.message || "Failed to save contact.");
     }
-
-    closeModal();
   }
 
-  function markContactedToday(contactId) {
+  async function markContactedToday(contactId) {
+    const item = contacts.find((c) => c.id === contactId);
+    if (!item) return;
     const today = new Date().toISOString().slice(0, 10);
-    setContacts((prev) =>
-      prev.map((item) =>
-        item.id === contactId
-          ? {
-              ...item,
-              lastContactedDate: today,
-            }
-          : item
-      )
-    );
+    try {
+      const data = await updateContact(contactId, toApiPayload({ ...item, lastContactedDate: today }));
+      setContacts((prev) => prev.map((c) => (c.id === contactId ? fromBackend(data.contact) : c)));
+    } catch (err) {
+      window.alert(err.message || "Failed to update contact.");
+    }
   }
 
   function confirmDelete(contact) {
     setDeleteTarget(contact);
   }
 
-  function deleteContact() {
+  async function deleteContact() {
     if (!deleteTarget) return;
-    setContacts((prev) => prev.filter((item) => item.id !== deleteTarget.id));
-    setDeleteTarget(null);
+    try {
+      await apiDeleteContact(deleteTarget.id);
+      setContacts((prev) => prev.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      window.alert(err.message || "Failed to delete contact.");
+    }
   }
 
   return (
@@ -402,6 +413,24 @@ export default function Contacts({ onLogout, onNavigate }) {
           </nav>
 
           <div className="nav-actions" aria-label="Utilities">
+            <button className="icon-btn" style={{ lineHeight: 0 }} type="button" aria-label="Notifications" onClick={() => onNavigate?.("reminders")}>
+              <svg style={{ display: "block" }} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+                <path d="M13.73 21a2 2 0 01-3.46 0" />
+              </svg>
+            </button>
+            <button className="icon-btn" style={{ lineHeight: 0 }} type="button" aria-label="Settings">
+              <svg style={{ display: "block" }} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06A1.65 1.65 0 0015 19.4a1.65 1.65 0 00-1 .6 1.65 1.65 0 00-.33 1.82V22a2 2 0 11-4 0v-.18a1.65 1.65 0 00-.33-1.82 1.65 1.65 0 00-1-.6 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-.6-1 1.65 1.65 0 00-1.82-.33H2a2 2 0 110-4h.18a1.65 1.65 0 001.82-.33 1.65 1.65 0 00.6-1 1.65 1.65 0 00-.33-1.82l-.06-.06A2 2 0 116.04 3.6l.06.06A1.65 1.65 0 008 4.6c.39 0 .77-.14 1.06-.4.29-.26.5-.62.57-1.01V3a2 2 0 114 0v.18c.07.39.28.75.57 1.01.29.26.67.4 1.06.4.39 0 .77-.14 1.06-.4l.06-.06A2 2 0 1120.4 6.04l-.06.06c-.26.29-.4.67-.4 1.06 0 .39.14.77.4 1.06.26.29.62.5 1.01.57H22a2 2 0 110 4h-.18c-.39.07-.75.28-1.01.57-.26.29-.4.67-.4 1.06z" />
+              </svg>
+            </button>
+            <button className="icon-btn" style={{ lineHeight: 0 }} type="button" aria-label="Profile">
+              <svg style={{ display: "block" }} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </button>
             <button className="danger-btn danger-btn--logout" type="button" onClick={onLogout}>
               Log Out
             </button>
@@ -483,7 +512,11 @@ export default function Contacts({ onLogout, onNavigate }) {
         </section>
 
         <section className="contacts-list" aria-label="Contacts list">
-          {!filtered.length ? (
+          {loadingContacts ? (
+            <div className="contacts-empty">Loading contacts…</div>
+          ) : contactsError ? (
+            <div className="contacts-empty">{contactsError}</div>
+          ) : !filtered.length ? (
             <div className="contacts-empty">No contacts match the current filters.</div>
           ) : (
             filtered.map((contact) => (
