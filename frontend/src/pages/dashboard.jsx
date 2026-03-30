@@ -986,6 +986,7 @@ export default function Dashboard({
         </section>
         */}
 
+        <section className="metrics" aria-label="Key metrics">
           <div className="metric-card">
             <div className="metric-label">Set Reminders</div>
             <div className="metric-value">{reminders.length}</div>
