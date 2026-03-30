@@ -390,6 +390,10 @@ export default function Dashboard({
   onLogout,
   onNavigate,
   onUpdateApplication,
+  notifications = [],
+  unreadCount = 0,
+  onMarkAllRead,
+  onClearNotifications,
 }) {
   const [reminders, setReminders] = useState([]);
   const [contacts, setContacts] = useState([]);
@@ -429,11 +433,11 @@ export default function Dashboard({
   const reminderDropdownRef = useRef(null);
 
   useEffect(() => {
-    if (!selectedApplication) return;
+  if (!selectedApplication) return;
 
-    const nextSelectedApplication = applications.find(
-      (application) => application.application_id === selectedApplication.application_id,
-    );
+  const nextSelectedApplication = applications.find(
+    (application) => application.application_id === selectedApplication.application_id,
+  );
 
     if (!nextSelectedApplication) {
       setSelectedApplication(null);
@@ -524,8 +528,12 @@ export default function Dashboard({
       list = [...list].sort((left, right) => left.application_id - right.application_id);
     }
 
-    if (sortBy === "company") {
+    if (sortBy === "company-asc") {
       list = [...list].sort((left, right) => left.company.localeCompare(right.company));
+    }
+
+    if (sortBy === "company-desc") {
+      list = [...list].sort((left, right) => right.company.localeCompare(left.company));
     }
 
     if (sortBy === "status") {
@@ -754,7 +762,7 @@ export default function Dashboard({
             <button
               ref={bellButtonRef}
               className={`icon-btn ${isReminderDropdownOpen ? "is-open" : ""}`}
-              style={iconBtnInline}
+              style={{ ...iconBtnInline, position: "relative" }}
               type="button"
               aria-label="Notifications"
               onClick={() => setIsReminderDropdownOpen((prev) => !prev)}
@@ -775,6 +783,31 @@ export default function Dashboard({
                 <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
                 <path d="M13.73 21a2 2 0 01-3.46 0" />
               </svg>
+              {unreadCount > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "-4px",
+                    right: "-4px",
+                    background: "#e53e3e",
+                    color: "#fff",
+                    borderRadius: "50%",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    minWidth: "16px",
+                    height: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    lineHeight: 1,
+                    padding: "0 3px",
+                    pointerEvents: "none",
+                  }}
+                  aria-label={`${unreadCount} unread notifications`}
+                >
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </button>
 
             {isReminderDropdownOpen && (
@@ -784,6 +817,51 @@ export default function Dashboard({
                 role="dialog"
                 aria-label="Reminders dropdown"
               >
+                {notifications.length > 0 && (
+                  <div style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "8px", marginBottom: "4px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 6px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 600, opacity: 0.7, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        Notifications
+                      </span>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        {unreadCount > 0 && (
+                          <button
+                            className="ghost-btn"
+                            type="button"
+                            style={{ fontSize: "11px", padding: "2px 8px" }}
+                            onClick={onMarkAllRead}
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                        <button
+                          className="ghost-btn"
+                          type="button"
+                          style={{ fontSize: "11px", padding: "2px 8px" }}
+                          onClick={onClearNotifications}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      {notifications.slice(0, 5).map((notif) => (
+                        <div
+                          key={notif.notification_id}
+                          style={{
+                            padding: "8px 16px",
+                            opacity: notif.is_read ? 0.5 : 1,
+                            borderLeft: notif.is_read ? "none" : "2px solid #4a9eff",
+                          }}
+                        >
+                          <div style={{ fontSize: "13px", fontWeight: 600 }}>{notif.title}</div>
+                          <div style={{ fontSize: "12px", opacity: 0.75, marginTop: "2px" }}>{notif.message}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="reminder-dropdown-header">
                   <div>
                     <h3 className="reminder-dropdown-title">Reminders</h3>
@@ -965,6 +1043,30 @@ export default function Dashboard({
             metricValue={allMetrics[metricSelections[2]]}
             onSelect={(key) => setMetricSelections((prev) => [prev[0], prev[1], key])}
           />
+        {/*<section className="metrics" aria-label="Key metrics">
+          {cardStats.map((selectedStat, index) => (
+            <div className="metric-card" key={index}>
+              <select
+                value={selectedStat}
+                onChange={(e) => handleCardChange(index, e.target.value)}
+                className="metric-dropdown"
+              >
+                {Object.keys(statOptions).map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+              <div className="metric-value">{statOptions[selectedStat] ?? 0}</div>
+            </div>
+          ))}
+        </section>
+        */}
+
+          <div className="metric-card">
+            <div className="metric-label">Set Reminders</div>
+            <div className="metric-value">{reminders.length}</div>
+          </div>
         </section>
 
         <section className="controls" aria-label="Dashboard controls">
@@ -1004,10 +1106,32 @@ export default function Dashboard({
               <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} aria-label="Sort">
                 <option value="newest">Sort: Newest</option>
                 <option value="oldest">Oldest</option>
-                <option value="company">Company</option>
+                <option value="company-asc">Company (A → Z)</option>
+                <option value="company-desc">Company (Z → A)</option>
                 <option value="status">Status</option>
               </select>
             </div>
+
+            {/*
+            <div className="control">
+              <select value={viewMode} onChange={(event) => setViewMode(event.target.value)} aria-label="View">
+                <option value="cards">View: Cards</option>
+                <option value="table" disabled>
+                  Table (later)
+                </option>
+              </select>
+            </div>
+
+            
+            <div className="quick-actions" aria-label="Quick actions">
+              <button className="ghost-btn" type="button" disabled>
+                Bulk Edit
+              </button>
+              <button className="ghost-btn" type="button" disabled>
+                Export
+              </button>
+            </div>
+            */}
 
             <div className="session-actions" aria-label="Session actions">
               <button className="ghost-btn" type="button" onClick={handleResetView}>
