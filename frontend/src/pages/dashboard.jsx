@@ -349,6 +349,10 @@ export default function Dashboard({
   onLogout,
   onNavigate,
   onUpdateApplication,
+  notifications = [],
+  unreadCount = 0,
+  onMarkAllRead,
+  onClearNotifications,
 }) {
   const [reminders, setReminders] = useState([]);
   const [query, setQuery] = useState("");
@@ -693,7 +697,7 @@ export default function Dashboard({
             <button
               ref={bellButtonRef}
               className={`icon-btn ${isReminderDropdownOpen ? "is-open" : ""}`}
-              style={iconBtnInline}
+              style={{ ...iconBtnInline, position: "relative" }}
               type="button"
               aria-label="Notifications"
               onClick={() => setIsReminderDropdownOpen((prev) => !prev)}
@@ -714,6 +718,31 @@ export default function Dashboard({
                 <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
                 <path d="M13.73 21a2 2 0 01-3.46 0" />
               </svg>
+              {unreadCount > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "-4px",
+                    right: "-4px",
+                    background: "#e53e3e",
+                    color: "#fff",
+                    borderRadius: "50%",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    minWidth: "16px",
+                    height: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    lineHeight: 1,
+                    padding: "0 3px",
+                    pointerEvents: "none",
+                  }}
+                  aria-label={`${unreadCount} unread notifications`}
+                >
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </button>
 
             {isReminderDropdownOpen && (
@@ -723,6 +752,51 @@ export default function Dashboard({
                 role="dialog"
                 aria-label="Reminders dropdown"
               >
+                {notifications.length > 0 && (
+                  <div style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "8px", marginBottom: "4px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 6px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 600, opacity: 0.7, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        Notifications
+                      </span>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        {unreadCount > 0 && (
+                          <button
+                            className="ghost-btn"
+                            type="button"
+                            style={{ fontSize: "11px", padding: "2px 8px" }}
+                            onClick={onMarkAllRead}
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                        <button
+                          className="ghost-btn"
+                          type="button"
+                          style={{ fontSize: "11px", padding: "2px 8px" }}
+                          onClick={onClearNotifications}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      {notifications.slice(0, 5).map((notif) => (
+                        <div
+                          key={notif.notification_id}
+                          style={{
+                            padding: "8px 16px",
+                            opacity: notif.is_read ? 0.5 : 1,
+                            borderLeft: notif.is_read ? "none" : "2px solid #4a9eff",
+                          }}
+                        >
+                          <div style={{ fontSize: "13px", fontWeight: 600 }}>{notif.title}</div>
+                          <div style={{ fontSize: "12px", opacity: 0.75, marginTop: "2px" }}>{notif.message}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="reminder-dropdown-header">
                   <div>
                     <h3 className="reminder-dropdown-title">Reminders</h3>

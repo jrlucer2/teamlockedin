@@ -91,6 +91,24 @@ export async function deleteReminder(reminderId) {
 
   return true;
 }
+export async function getNotifications() {
+  const response = await authenticatedFetch('/api/notifications');
+  if (!response.ok) throw new Error('Failed to load notifications.');
+  return response.json();
+}
+
+export async function markAllNotificationsRead() {
+  const response = await authenticatedFetch('/api/notifications/read-all', { method: 'PUT' });
+  if (!response.ok) throw new Error('Failed to mark notifications as read.');
+  return response.json();
+}
+
+export async function clearNotifications() {
+  const response = await authenticatedFetch('/api/notifications', { method: 'DELETE' });
+  if (!response.ok) throw new Error('Failed to clear notifications.');
+  return response.json();
+}
+
 export function getStoredToken() {
   return localStorage.getItem("token") || "";
 }

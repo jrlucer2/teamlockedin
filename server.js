@@ -248,6 +248,13 @@ function validateReminderPayload(reminder) {
   return errors;
 }
 
+async function insertNotification(connection, email, type, title, message, applicationId = null) {
+  await connection.execute(
+    'INSERT INTO notification (email, type, title, message, application_id) VALUES (?, ?, ?, ?, ?)',
+    [email, type, title, message, applicationId],
+  );
+}
+
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.startsWith('Bearer ')
@@ -502,6 +509,15 @@ app.post('/api/jobs', authenticateToken, async (req, res) => {
         ...application,
       };
 
+      await insertNotification(
+        connection,
+        application.email,
+        'application_created',
+        `Application Saved: ${application.job_title}`,
+        `You saved an application for ${application.job_title} at ${application.company}.`,
+        result.insertId,
+      );
+
       res.status(201).json({
         job: createdJob,
         application: createdJob,
@@ -532,6 +548,11 @@ app.put('/api/jobs/:applicationId', authenticateToken, async (req, res) => {
   try {
     const connection = await createConnection();
     try {
+      const [existing] = await connection.execute(
+        'SELECT job_status, job_title, company FROM application WHERE application_id = ? AND LOWER(email) = ?',
+        [applicationId, email],
+      );
+
       const [result] = await connection.execute(
         `UPDATE application
         SET
@@ -568,6 +589,27 @@ app.put('/api/jobs/:applicationId', authenticateToken, async (req, res) => {
 
       if (result.affectedRows === 0) {
         return res.status(404).json({ message: 'Application not found.' });
+      }
+
+      const oldStatus = existing[0]?.job_status;
+      if (oldStatus && application.job_status !== oldStatus) {
+        const jobTitle = existing[0]?.job_title || 'Application';
+        const company = existing[0]?.company ? ` at ${existing[0].company}` : '';
+        const statusLabels = {
+          saved: 'Saved',
+          applied: 'Applied',
+          interviewing: 'Interviewing',
+          offer: 'Offer Received',
+          rejected: 'Rejected',
+        };
+        await insertNotification(
+          connection,
+          email,
+          'status_changed',
+          `Status Updated: ${jobTitle}`,
+          `Your application for ${jobTitle}${company} is now "${statusLabels[application.job_status] || application.job_status}".`,
+          applicationId,
+        );
       }
 
       res.status(200).json({
@@ -612,6 +654,60 @@ app.delete('/api/jobs/:applicationId', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error deleting application.' });
+  }
+});
+
+app.get('/api/notifications', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        'SELECT notification_id, type, title, message, application_id, is_read, created_at FROM notification WHERE email = ? ORDER BY created_at DESC LIMIT 30',
+        [email],
+      );
+      res.status(200).json({ notifications: rows });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error fetching notifications.' });
+  }
+});
+
+app.put('/api/notifications/read-all', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  try {
+    const connection = await createConnection();
+    try {
+      await connection.execute(
+        'UPDATE notification SET is_read = 1 WHERE email = ?',
+        [email],
+      );
+      res.status(200).json({ message: 'All notifications marked as read.' });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error updating notifications.' });
+  }
+});
+
+app.delete('/api/notifications', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  try {
+    const connection = await createConnection();
+    try {
+      await connection.execute('DELETE FROM notification WHERE email = ?', [email]);
+      res.status(200).json({ message: 'Notifications cleared.' });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error clearing notifications.' });
   }
 });
 
@@ -1193,6 +1289,31 @@ if (servingReactBuild) {
   });
 }
 
+async function initDatabase() {
+  try {
+    const connection = await createConnection();
+    try {
+      await connection.execute(`
+        CREATE TABLE IF NOT EXISTS notification (
+          notification_id INT AUTO_INCREMENT PRIMARY KEY,
+          email VARCHAR(255) NOT NULL,
+          type VARCHAR(50) NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          message TEXT NOT NULL,
+          application_id INT DEFAULT NULL,
+          is_read TINYINT(1) NOT NULL DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error('Failed to initialize notification table:', error);
+  }
+}
+
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
+  initDatabase();
 });
