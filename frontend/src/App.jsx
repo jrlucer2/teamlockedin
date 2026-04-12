@@ -306,6 +306,7 @@ export default function App() {
         hasLoadedApplications={hasLoadedApplications}
         applicationsStatus={applicationsStatus}
         onDeleteApplication={handleDeleteApplication}
+        onDecrementDocCount={handleDecrementDocCount}
         onLogout={handleLogout}
         onNavigate={handleNavigate}
         onUpdateApplication={handleUpdateApplication}
