@@ -339,6 +339,22 @@ html[data-theme="light"] .dashboard-docs-empty {
   color: rgba(15, 23, 42, 0.45);
 }
 
+html[data-theme="light"] .dashboard-link-contact-row select {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.18);
+  color: rgba(15, 23, 42, 0.88);
+}
+
+html[data-theme="light"] .dashboard-link-contact-row select option {
+  background: #ffffff;
+  color: rgba(15, 23, 42, 0.88);
+}
+
+html[data-theme="light"] .dashboard-link-contact-row select:focus {
+  border-color: rgba(2, 132, 199, 0.6);
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
+}
+
 /* ── Misc dashboard ──────────────────────────────────────────────────── */
 html[data-theme="light"] .empty-state {
   background: rgba(255, 255, 255, 0.55);

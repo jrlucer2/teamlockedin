@@ -220,6 +220,28 @@ function ApplicationCard({ app, deletingId, onDelete, onOpenDetails, onOpenStatu
               {app.doc_count}
             </span>
           )}
+          {app.contact_count > 0 && (
+            <span
+              className="app-doc-count"
+              title={`${app.contact_count} linked contact${app.contact_count !== 1 ? "s" : ""}`}
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              {app.contact_count}
+            </span>
+          )}
           <StatusPill status={app.job_status} onClick={() => onOpenStatusEditor(app)} />
         </div>
       </div>
@@ -469,6 +491,8 @@ export default function Dashboard({
   applicationsStatus,
   onDeleteApplication,
   onDecrementDocCount,
+  onIncrementContactCount,
+  onDecrementContactCount,
   onLogout,
   onNavigate,
   onUpdateApplication,
@@ -850,6 +874,7 @@ export default function Dashboard({
     try {
       const data = await linkContactToApplication(selectedApplication.application_id, contactId);
       setLinkedContacts((prev) => [...(prev ?? []), data.contact]);
+      onIncrementContactCount?.(selectedApplication.application_id);
     } catch (error) {
       setDetailError(error?.message || "Could not link contact.");
     }
@@ -860,6 +885,7 @@ export default function Dashboard({
     try {
       await unlinkContactFromApplication(selectedApplication.application_id, contactId);
       setLinkedContacts((prev) => (prev ?? []).filter((c) => c.contact_id !== contactId));
+      onDecrementContactCount?.(selectedApplication.application_id);
     } catch (error) {
       setDetailError(error?.message || "Could not unlink contact.");
     }

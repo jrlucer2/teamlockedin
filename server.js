@@ -440,9 +440,11 @@ app.get('/api/jobs', authenticateToken, async (req, res) => {
           a.job_url,
           a.job_description,
           a.application_notes,
-          COUNT(ad.document_id) AS doc_count
+          COUNT(DISTINCT ad.document_id) AS doc_count,
+          COUNT(DISTINCT ac.contact_id) AS contact_count
         FROM application a
         LEFT JOIN application_document ad ON a.application_id = ad.application_id
+        LEFT JOIN application_contact ac ON a.application_id = ac.application_id
         WHERE LOWER(a.email) = ?
         GROUP BY a.application_id
         ORDER BY a.application_id DESC`,
@@ -1639,7 +1641,19 @@ app.get('/api/jobs/:applicationId/contacts', authenticateToken, async (req, res)
       if (!appRows.length) return res.status(404).json({ message: 'Application not found.' });
 
       const [rows] = await connection.execute(
-        `SELECT ${CONTACT_SELECT_COLS}
+        `SELECT c.contact_id,
+                c.email,
+                c.contact_name,
+                c.contact_company,
+                c.contact_role,
+                c.relationship_strength,
+                c.contact_email,
+                c.contact_phone,
+                c.contact_linkedin,
+                c.preferred_communication,
+                c.last_contacted_date,
+                c.next_followup_date,
+                c.contact_notes
          FROM contact c
          JOIN application_contact ac ON c.contact_id = ac.contact_id
          WHERE ac.application_id = ? AND LOWER(c.email) = ?`,
@@ -1773,11 +1787,18 @@ async function initDatabase() {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
+      await connection.execute(`
+        CREATE TABLE IF NOT EXISTS application_contact (
+          application_id INT NOT NULL,
+          contact_id INT NOT NULL,
+          PRIMARY KEY (application_id, contact_id)
+        )
+      `);
     } finally {
       await connection.end();
     }
   } catch (error) {
-    console.error('Failed to initialize notification table:', error);
+    console.error('Failed to initialize database tables:', error);
   }
 }
 

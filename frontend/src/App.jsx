@@ -240,6 +240,26 @@ export default function App() {
     );
   }
 
+  function handleIncrementContactCount(applicationId) {
+    setApplications((prev) =>
+      prev.map((app) =>
+        app.application_id === applicationId
+          ? { ...app, contact_count: (app.contact_count || 0) + 1 }
+          : app,
+      ),
+    );
+  }
+
+  function handleDecrementContactCount(applicationId) {
+    setApplications((prev) =>
+      prev.map((app) =>
+        app.application_id === applicationId
+          ? { ...app, contact_count: Math.max(0, (app.contact_count || 0) - 1) }
+          : app,
+      ),
+    );
+  }
+
   function handleNavigate(page, options = {}) {
     setCurrentPage(page);
     setPageState({
@@ -307,6 +327,8 @@ export default function App() {
         applicationsStatus={applicationsStatus}
         onDeleteApplication={handleDeleteApplication}
         onDecrementDocCount={handleDecrementDocCount}
+        onIncrementContactCount={handleIncrementContactCount}
+        onDecrementContactCount={handleDecrementContactCount}
         onLogout={handleLogout}
         onNavigate={handleNavigate}
         onUpdateApplication={handleUpdateApplication}

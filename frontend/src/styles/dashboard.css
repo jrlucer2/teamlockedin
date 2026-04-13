@@ -950,21 +950,33 @@ a { color: inherit; }
 .dashboard-link-contact-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  padding: 8px 12px;
-  margin-top: 8px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .dashboard-link-contact-row select {
   flex: 1;
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.84);
+  background: #0d1525;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: rgba(255, 255, 255, 0.88);
   font-size: 13px;
+  font: inherit;
+  font-size: 13px !important;
   outline: none;
   cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.dashboard-link-contact-row select:focus {
+  border-color: rgba(90, 160, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(90, 160, 255, 0.12);
+}
+
+.dashboard-link-contact-row select option {
+  background: #0d1525;
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .dashboard-modal-actions {
