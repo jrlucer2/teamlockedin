@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
 import "../styles/dashboard.css";
 import "../styles/contacts.css";
-import { getContacts, createContact, updateContact, deleteContact as apiDeleteContact } from "../lib/api";
+import { getContacts, createContact, updateContact, deleteContact as apiDeleteContact, linkContactToApplication, unlinkContactFromApplication, fetchApplicationIdsForContact } from "../lib/api";
+import { fetchApplications } from "../lib/applicationsApi";
 
 function fromBackend(row) {
   return {
@@ -92,9 +93,10 @@ function ContactModal({ title, children, onClose }) {
   );
 }
 
-function ContactForm({ initial, onSave, onCancel }) {
+function ContactForm({ initial, onSave, onCancel, applications = [], initialLinkedAppIds = [] }) {
   const [form, setForm] = useState(initial);
   const [error, setError] = useState("");
+  const [linkedAppIds, setLinkedAppIds] = useState(new Set(initialLinkedAppIds));
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -137,6 +139,7 @@ function ContactForm({ initial, onSave, onCancel }) {
       phone: form.phone.trim(),
       linkedin: form.linkedin.trim(),
       notes: form.notes.trim(),
+      linkedAppIds: [...linkedAppIds],
     });
   }
 
@@ -257,6 +260,37 @@ function ContactForm({ initial, onSave, onCancel }) {
         </label>
       </div>
 
+      {applications.length > 0 && (
+        <div className="form-field form-field--full" style={{ marginTop: "12px" }}>
+          <span className="form-label">Link to Job Applications</span>
+          <div className="contact-app-link-list">
+            {applications.map((app) => {
+              const checked = linkedAppIds.has(app.application_id);
+              return (
+                <label key={app.application_id} className="contact-app-link-item">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      setLinkedAppIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(app.application_id)) {
+                          next.delete(app.application_id);
+                        } else {
+                          next.add(app.application_id);
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                  <span>{app.job_title} — {app.company}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="contacts-modal-actions">
         <button className="ghost-btn" type="button" onClick={onCancel}>
           Cancel
@@ -273,13 +307,14 @@ export default function Contacts({ onLogout, onNavigate }) {
   const [contacts, setContacts] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [contactsError, setContactsError] = useState("");
+  const [applications, setApplications] = useState([]);
 
   const [query, setQuery] = useState("");
   const [relationshipFilter, setRelationshipFilter] = useState("all");
   const [preferenceFilter, setPreferenceFilter] = useState("all");
   const [sortBy, setSortBy] = useState("next_follow_up");
 
-  const [modalState, setModalState] = useState({ open: false, editing: null });
+  const [modalState, setModalState] = useState({ open: false, editing: null, linkedAppIds: [] });
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   useEffect(() => {
@@ -293,6 +328,12 @@ export default function Contacts({ onLogout, onNavigate }) {
         setContactsError(err.message || "Failed to load contacts.");
       })
       .finally(() => setLoadingContacts(false));
+  }, []);
+
+  useEffect(() => {
+    fetchApplications()
+      .then((apps) => setApplications(Array.isArray(apps) ? apps : []))
+      .catch(() => setApplications([]));
   }, []);
 
   const filtered = useMemo(() => {
@@ -333,26 +374,46 @@ export default function Contacts({ onLogout, onNavigate }) {
   }, [contacts, query, relationshipFilter, preferenceFilter, sortBy]);
 
   function openCreateModal() {
-    setModalState({ open: true, editing: null });
+    setModalState({ open: true, editing: null, linkedAppIds: [] });
   }
 
-  function openEditModal(contact) {
-    setModalState({ open: true, editing: contact });
+  async function openEditModal(contact) {
+    let linkedAppIds = [];
+    try {
+      linkedAppIds = await fetchApplicationIdsForContact(contact.id);
+    } catch { /* non-critical */ }
+    setModalState({ open: true, editing: contact, linkedAppIds });
   }
 
   function closeModal() {
-    setModalState({ open: false, editing: null });
+    setModalState({ open: false, editing: null, linkedAppIds: [] });
   }
 
   async function saveContact(payload) {
     try {
+      let savedContactId;
       if (payload.id == null) {
         const data = await createContact(toApiPayload(payload));
         setContacts((prev) => [fromBackend(data.contact), ...prev]);
+        savedContactId = data.contact.contact_id;
       } else {
         const data = await updateContact(payload.id, toApiPayload(payload));
         setContacts((prev) => prev.map((item) => (item.id === payload.id ? fromBackend(data.contact) : item)));
+        savedContactId = payload.id;
       }
+
+      // Sync application links
+      const newIds = new Set(payload.linkedAppIds ?? []);
+      const prevIds = new Set(modalState.linkedAppIds ?? []);
+
+      const toAdd = [...newIds].filter((id) => !prevIds.has(id));
+      const toRemove = [...prevIds].filter((id) => !newIds.has(id));
+
+      await Promise.all([
+        ...toAdd.map((appId) => linkContactToApplication(appId, savedContactId).catch(() => {})),
+        ...toRemove.map((appId) => unlinkContactFromApplication(appId, savedContactId).catch(() => {})),
+      ]);
+
       closeModal();
     } catch (err) {
       window.alert(err.message || "Failed to save contact.");
@@ -576,7 +637,13 @@ export default function Contacts({ onLogout, onNavigate }) {
 
       {modalState.open ? (
         <ContactModal title={modalState.editing ? "Edit Contact" : "New Contact"} onClose={closeModal}>
-          <ContactForm initial={modalState.editing ?? INITIAL_FORM} onSave={saveContact} onCancel={closeModal} />
+          <ContactForm
+            initial={modalState.editing ?? INITIAL_FORM}
+            onSave={saveContact}
+            onCancel={closeModal}
+            applications={applications}
+            initialLinkedAppIds={modalState.linkedAppIds ?? []}
+          />
         </ContactModal>
       ) : null}
 

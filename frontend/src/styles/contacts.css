@@ -293,3 +293,29 @@
     justify-content: flex-start;
   }
 }
+
+.contact-app-link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.contact-app-link-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(230, 237, 247, 0.84);
+  cursor: pointer;
+}
+
+.contact-app-link-item input[type="checkbox"] {
+  accent-color: #4db8ff;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}

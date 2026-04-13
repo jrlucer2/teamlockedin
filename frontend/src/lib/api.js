@@ -193,6 +193,41 @@ export async function authFetch(path, options = {}) {
   });
 }
 
+export async function fetchApplicationIdsForContact(contactId) {
+  const response = await authenticatedFetch(`/api/contacts/${contactId}/applications`);
+  if (!response.ok) throw new Error('Failed to load linked applications.');
+  const data = await response.json();
+  return Array.isArray(data.applicationIds) ? data.applicationIds : [];
+}
+
+export async function fetchContactsForApplication(applicationId) {
+  const response = await authenticatedFetch(`/api/jobs/${applicationId}/contacts`);
+  if (!response.ok) throw new Error('Failed to load linked contacts.');
+  const data = await response.json();
+  return Array.isArray(data.contacts) ? data.contacts : [];
+}
+
+export async function linkContactToApplication(applicationId, contactId) {
+  const response = await authenticatedFetch(`/api/jobs/${applicationId}/contacts/${contactId}`, {
+    method: 'POST',
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'Failed to link contact.');
+  return data;
+}
+
+export async function unlinkContactFromApplication(applicationId, contactId) {
+  const response = await authenticatedFetch(`/api/jobs/${applicationId}/contacts/${contactId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    let message = 'Failed to unlink contact.';
+    try { const d = await response.json(); message = d.message || message; } catch { /* noop */ }
+    throw new Error(message);
+  }
+  return true;
+}
+
 export async function getDashboardPreferences() {
   const response = await authenticatedFetch('/api/dashboard-preferences');
   if (!response.ok) throw new Error('Failed to load dashboard preferences.');

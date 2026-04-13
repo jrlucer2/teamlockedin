@@ -1590,6 +1590,155 @@ app.delete('/api/contacts/:contactId', authenticateToken, async (req, res) => {
   }
 });
 
+// --- Application ↔ Contact linking routes ---
+
+app.get('/api/contacts/:contactId/applications', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const contactId = Number(req.params.contactId);
+
+  if (!Number.isInteger(contactId) || contactId <= 0) {
+    return res.status(400).json({ message: 'Invalid contact id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        `SELECT a.application_id
+         FROM application a
+         JOIN application_contact ac ON a.application_id = ac.application_id
+         WHERE ac.contact_id = ? AND LOWER(a.email) = ?`,
+        [contactId, email],
+      );
+      res.status(200).json({ applicationIds: rows.map((r) => r.application_id) });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error retrieving linked applications: ${detail}` : 'Error retrieving linked applications.' });
+  }
+});
+
+app.get('/api/jobs/:applicationId/contacts', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const applicationId = Number(req.params.applicationId);
+
+  if (!Number.isInteger(applicationId) || applicationId <= 0) {
+    return res.status(400).json({ message: 'Invalid application id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [appRows] = await connection.execute(
+        'SELECT application_id FROM application WHERE application_id = ? AND LOWER(email) = ?',
+        [applicationId, email],
+      );
+      if (!appRows.length) return res.status(404).json({ message: 'Application not found.' });
+
+      const [rows] = await connection.execute(
+        `SELECT ${CONTACT_SELECT_COLS}
+         FROM contact c
+         JOIN application_contact ac ON c.contact_id = ac.contact_id
+         WHERE ac.application_id = ? AND LOWER(c.email) = ?`,
+        [applicationId, email],
+      );
+      res.status(200).json({ contacts: rows });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error retrieving linked contacts: ${detail}` : 'Error retrieving linked contacts.' });
+  }
+});
+
+app.post('/api/jobs/:applicationId/contacts/:contactId', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const applicationId = Number(req.params.applicationId);
+  const contactId = Number(req.params.contactId);
+
+  if (!Number.isInteger(applicationId) || applicationId <= 0) {
+    return res.status(400).json({ message: 'Invalid application id.' });
+  }
+  if (!Number.isInteger(contactId) || contactId <= 0) {
+    return res.status(400).json({ message: 'Invalid contact id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [appRows] = await connection.execute(
+        'SELECT application_id FROM application WHERE application_id = ? AND LOWER(email) = ?',
+        [applicationId, email],
+      );
+      if (!appRows.length) return res.status(404).json({ message: 'Application not found.' });
+
+      const [contactRows] = await connection.execute(
+        'SELECT contact_id FROM contact WHERE contact_id = ? AND LOWER(email) = ?',
+        [contactId, email],
+      );
+      if (!contactRows.length) return res.status(404).json({ message: 'Contact not found.' });
+
+      await connection.execute(
+        'INSERT IGNORE INTO application_contact (application_id, contact_id) VALUES (?, ?)',
+        [applicationId, contactId],
+      );
+
+      const [rows] = await connection.execute(
+        `SELECT ${CONTACT_SELECT_COLS} FROM contact WHERE contact_id = ?`,
+        [contactId],
+      );
+      res.status(201).json({ contact: rows[0] });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error linking contact: ${detail}` : 'Error linking contact.' });
+  }
+});
+
+app.delete('/api/jobs/:applicationId/contacts/:contactId', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const applicationId = Number(req.params.applicationId);
+  const contactId = Number(req.params.contactId);
+
+  if (!Number.isInteger(applicationId) || applicationId <= 0) {
+    return res.status(400).json({ message: 'Invalid application id.' });
+  }
+  if (!Number.isInteger(contactId) || contactId <= 0) {
+    return res.status(400).json({ message: 'Invalid contact id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [appRows] = await connection.execute(
+        'SELECT application_id FROM application WHERE application_id = ? AND LOWER(email) = ?',
+        [applicationId, email],
+      );
+      if (!appRows.length) return res.status(404).json({ message: 'Application not found.' });
+
+      await connection.execute(
+        'DELETE FROM application_contact WHERE application_id = ? AND contact_id = ?',
+        [applicationId, contactId],
+      );
+      res.status(200).json({ message: 'Contact unlinked.' });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error unlinking contact: ${detail}` : 'Error unlinking contact.' });
+  }
+});
+
 app.use((error, _req, res, next) => {
   if (error instanceof multer.MulterError) {
     return res.status(400).json({ message: error.message });

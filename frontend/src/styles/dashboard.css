@@ -947,6 +947,26 @@ a { color: inherit; }
   white-space: nowrap;
 }
 
+.dashboard-link-contact-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-top: 8px;
+}
+
+.dashboard-link-contact-row select {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+}
+
 .dashboard-modal-actions {
   margin-top: 18px;
   display: flex;

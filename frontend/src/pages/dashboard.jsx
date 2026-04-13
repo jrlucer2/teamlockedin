@@ -10,6 +10,9 @@ import {
   deleteReminder,
   getDashboardPreferences,
   saveDashboardPreferences,
+  fetchContactsForApplication,
+  linkContactToApplication,
+  unlinkContactFromApplication,
 } from "../lib/api";
 
 const STATUS_OPTIONS = ["saved", "applied", "interviewing", "offer", "rejected"];
@@ -252,6 +255,41 @@ function DetailRow({ label, value }) {
   );
 }
 
+function LinkedContactSelector({ allContacts, linkedContacts, onLink }) {
+  const [selectedId, setSelectedId] = useState("");
+
+  const linkedIds = new Set(linkedContacts.map((c) => c.contact_id));
+  const available = allContacts.filter((c) => !linkedIds.has(c.contact_id));
+
+  if (!available.length) return null;
+
+  function handleLink() {
+    if (!selectedId) return;
+    onLink(Number(selectedId));
+    setSelectedId("");
+  }
+
+  return (
+    <div className="dashboard-link-contact-row">
+      <select
+        value={selectedId}
+        onChange={(e) => setSelectedId(e.target.value)}
+        aria-label="Select contact to link"
+      >
+        <option value="">Add a contact...</option>
+        {available.map((c) => (
+          <option key={c.contact_id} value={c.contact_id}>
+            {c.contact_name}{c.contact_company ? ` · ${c.contact_company}` : ""}
+          </option>
+        ))}
+      </select>
+      <button className="ghost-btn" type="button" onClick={handleLink} disabled={!selectedId}>
+        Link
+      </button>
+    </div>
+  );
+}
+
 function ApplicationDetailModal({
   application,
   error,
@@ -259,10 +297,15 @@ function ApplicationDetailModal({
   isStatusFocused,
   linkedDocuments,
   isLoadingDocs,
+  linkedContacts,
+  isLoadingContacts,
+  allContacts,
   onClose,
   onSave,
   onViewDocument,
   onUnlinkDocument,
+  onLinkContact,
+  onUnlinkContact,
   statusValue,
   onStatusChange,
 }) {
@@ -361,6 +404,43 @@ function ApplicationDetailModal({
             )}
           </div>
 
+          <div className="dashboard-copy-block">
+            <span className="dashboard-detail-label">Linked Contacts</span>
+            {isLoadingContacts ? (
+              <p className="dashboard-docs-loading">Loading contacts...</p>
+            ) : (
+              <>
+                {!linkedContacts || linkedContacts.length === 0 ? (
+                  <p className="dashboard-docs-empty">No contacts linked to this application.</p>
+                ) : (
+                  <ul className="dashboard-doc-list">
+                    {linkedContacts.map((c) => (
+                      <li key={c.contact_id} className="dashboard-doc-item">
+                        <span className="dashboard-doc-type">{c.contact_role || c.relationship_strength || ""}</span>
+                        <span className="dashboard-doc-name">
+                          {c.contact_name}
+                          {c.contact_company ? ` · ${c.contact_company}` : ""}
+                        </span>
+                        <button
+                          className="danger-btn"
+                          type="button"
+                          onClick={() => onUnlinkContact(c.contact_id)}
+                        >
+                          Unlink
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <LinkedContactSelector
+                  allContacts={allContacts}
+                  linkedContacts={linkedContacts ?? []}
+                  onLink={onLinkContact}
+                />
+              </>
+            )}
+          </div>
+
           <div className="dashboard-modal-actions">
             {application.job_url ? (
               <a className="ghost-btn dashboard-modal-link" href={application.job_url} target="_blank" rel="noreferrer">
@@ -413,6 +493,8 @@ export default function Dashboard({
   const [detailMode, setDetailMode] = useState("view");
   const [linkedDocuments, setLinkedDocuments] = useState(null);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [linkedContacts, setLinkedContacts] = useState(null);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [isReminderDropdownOpen, setIsReminderDropdownOpen] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [reminderError, setReminderError] = useState("");
@@ -692,6 +774,12 @@ export default function Dashboard({
       .then((docs) => setLinkedDocuments(docs))
       .catch(() => setLinkedDocuments([]))
       .finally(() => setIsLoadingDocs(false));
+    setLinkedContacts(null);
+    setIsLoadingContacts(true);
+    fetchContactsForApplication(application.application_id)
+      .then((rows) => setLinkedContacts(rows))
+      .catch(() => setLinkedContacts([]))
+      .finally(() => setIsLoadingContacts(false));
   }
 
   function handleOpenDetails(application) {
@@ -712,6 +800,8 @@ export default function Dashboard({
     setDetailMode("view");
     setLinkedDocuments(null);
     setIsLoadingDocs(false);
+    setLinkedContacts(null);
+    setIsLoadingContacts(false);
   }
 
   async function handleSaveStatus() {
@@ -752,6 +842,26 @@ export default function Dashboard({
       onDecrementDocCount?.(selectedApplication.application_id);
     } catch (error) {
       setDetailError(error?.message || "Could not unlink document.");
+    }
+  }
+
+  async function handleLinkContact(contactId) {
+    if (!selectedApplication) return;
+    try {
+      const data = await linkContactToApplication(selectedApplication.application_id, contactId);
+      setLinkedContacts((prev) => [...(prev ?? []), data.contact]);
+    } catch (error) {
+      setDetailError(error?.message || "Could not link contact.");
+    }
+  }
+
+  async function handleUnlinkContact(contactId) {
+    if (!selectedApplication) return;
+    try {
+      await unlinkContactFromApplication(selectedApplication.application_id, contactId);
+      setLinkedContacts((prev) => (prev ?? []).filter((c) => c.contact_id !== contactId));
+    } catch (error) {
+      setDetailError(error?.message || "Could not unlink contact.");
     }
   }
 
@@ -1285,10 +1395,15 @@ export default function Dashboard({
           isStatusFocused={detailMode === "status"}
           linkedDocuments={linkedDocuments}
           isLoadingDocs={isLoadingDocs}
+          linkedContacts={linkedContacts}
+          isLoadingContacts={isLoadingContacts}
+          allContacts={contacts}
           onClose={handleCloseDetails}
           onSave={handleSaveStatus}
           onViewDocument={handleViewDocument}
           onUnlinkDocument={handleUnlinkDocument}
+          onLinkContact={handleLinkContact}
+          onUnlinkContact={handleUnlinkContact}
           onStatusChange={setDetailStatus}
           statusValue={detailStatus}
         />
