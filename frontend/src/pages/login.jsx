@@ -1,33 +1,63 @@
 import { useState } from "react";
 
+const EMPLOYMENT_OPTIONS = [
+  { value: "", label: "Select status…" },
+  { value: "student", label: "Student" },
+  { value: "employed", label: "Employed" },
+  { value: "unemployed", label: "Unemployed / Seeking" },
+  { value: "freelance", label: "Freelance / Contract" },
+  { value: "other", label: "Other" },
+];
+
+const INITIAL_PROFILE = {
+  firstName: "",
+  lastName: "",
+  organization: "",
+  employmentStatus: "",
+  targetRole: "",
+};
+
 export default function Login({ onLoginSuccess }) {
   const [mode, setMode] = useState("signin");
+  // signin fields
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  // create account step (1 = credentials, 2 = profile)
+  const [createStep, setCreateStep] = useState(1);
+  const [profile, setProfile] = useState(INITIAL_PROFILE);
+
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+
+  function updateProfile(key, value) {
+    setProfile((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function switchMode(next) {
+    setMode(next);
+    setCreateStep(1);
+    setError("");
+    setInfo("");
+    setPassword("");
+    setConfirmPassword("");
+    setProfile(INITIAL_PROFILE);
+  }
 
   async function parseResponse(response) {
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
       return response.json().catch(() => ({}));
     }
-
     const raw = await response.text().catch(() => "");
     return raw ? { message: raw.slice(0, 180) } : {};
   }
 
-  async function signInWithCredentials({ emailInput, passwordInput }) {
+  async function signInWithCredentials(emailInput, passwordInput) {
     const response = await fetch("/api/login", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email: emailInput.trim(),
-        password: passwordInput,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: emailInput.trim(), password: passwordInput }),
     });
 
     const data = await parseResponse(response);
@@ -45,144 +75,307 @@ export default function Login({ onLoginSuccess }) {
     onLoginSuccess?.();
   }
 
-  async function onSubmit(e) {
+  // Step 1 submit: validate credentials and advance to step 2
+  function handleStep1(e) {
     e.preventDefault();
     setError("");
-    setInfo("");
 
-    const formData = new FormData(e.currentTarget);
-    const emailInput = String(formData.get("email") || "").trim();
-    const passwordInput = String(formData.get("password") || "");
-    const confirmPasswordInput = String(formData.get("confirmPassword") || "");
-
-    setEmail(emailInput);
-    setPassword(passwordInput);
-    setConfirmPassword(confirmPasswordInput);
-
-    const hasRequiredFields = mode === "create"
-      ? emailInput.length > 0 && passwordInput.trim().length > 0 && confirmPasswordInput.trim().length > 0
-      : emailInput.length > 0 && passwordInput.trim().length > 0;
-
-    if (!hasRequiredFields) {
-      setError(
-        mode === "create"
-          ? "Please enter email, password, and confirm password."
-          : "Please enter an email and password."
-      );
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setError("Please enter your email and password.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
 
-    if (mode === "create" && passwordInput !== confirmPasswordInput) {
-      setError("Passwords do not match.");
+    setCreateStep(2);
+  }
+
+  // Step 2 submit: send full registration payload
+  async function handleStep2(e) {
+    e.preventDefault();
+    setError("");
+
+    if (!profile.firstName.trim() || !profile.lastName.trim()) {
+      setError("First and last name are required.");
       return;
     }
 
     try {
-      if (mode === "create") {
-        const createRes = await fetch("/api/create-account", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: emailInput,
-            password: passwordInput,
-          }),
-        });
+      const createRes = await fetch("/api/create-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          firstName: profile.firstName.trim(),
+          lastName: profile.lastName.trim(),
+          organization: profile.organization.trim() || null,
+          employmentStatus: profile.employmentStatus || null,
+          targetRole: profile.targetRole.trim() || null,
+        }),
+      });
 
-        const createData = await parseResponse(createRes);
-        if (!createRes.ok) {
-          setError(createData.message || `Account creation failed (HTTP ${createRes.status}).`);
-          return;
-        }
-
-        setInfo("Account created. Signing you in...");
+      const createData = await parseResponse(createRes);
+      if (!createRes.ok) {
+        setError(createData.message || `Account creation failed (HTTP ${createRes.status}).`);
+        return;
       }
 
-      await signInWithCredentials({ emailInput, passwordInput });
+      setInfo("Account created. Signing you in…");
+      await signInWithCredentials(email, password);
     } catch (err) {
       setError(
-        err?.message
-          || "Unable to reach backend API. Start backend server (`npm run dev`) on port 3000."
+        err?.message ||
+          "Unable to reach backend API. Start backend server (`npm run dev`) on port 3000."
       );
     }
   }
 
-  return (
-    <div className="auth-shell">
-      <div className="auth-card">
-        <h1 className="auth-title">{mode === "create" ? "Create account" : "Sign in"}</h1>
-        <p className="auth-subtitle">
-          {mode === "create"
-            ? "Create an account, then you will be signed in automatically."
-            : "Enter your credentials to access your dashboard."}
-        </p>
+  // Sign-in submit
+  async function handleSignIn(e) {
+    e.preventDefault();
+    setError("");
+    setInfo("");
 
-        <form className="auth-form" onSubmit={onSubmit}>
-          <label className="auth-label">
-            Email
-            <input
-              className="auth-input"
-              type="email"
-              name="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              placeholder="you@example.com"
-            />
-          </label>
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setError("Please enter an email and password.");
+      return;
+    }
 
-          <label className="auth-label">
-            Password
-            <input
-              className="auth-input"
-              type="password"
-              name="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              placeholder="••••••••"
-            />
-          </label>
+    try {
+      await signInWithCredentials(trimmedEmail, password);
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Unable to reach backend API. Start backend server (`npm run dev`) on port 3000."
+      );
+    }
+  }
 
-          {mode === "create" ? (
+  if (mode === "signin") {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <h1 className="auth-title">Sign in</h1>
+          <p className="auth-subtitle">Enter your credentials to access your dashboard.</p>
+
+          <form className="auth-form" onSubmit={handleSignIn}>
             <label className="auth-label">
-              Confirm password
+              Email
+              <input
+                className="auth-input"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                placeholder="you@example.com"
+              />
+            </label>
+
+            <label className="auth-label">
+              Password
               <input
                 className="auth-input"
                 type="password"
-                name="confirmPassword"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
                 placeholder="••••••••"
               />
             </label>
-          ) : null}
 
-          {error ? <div className="auth-error">{error}</div> : null}
-          {info ? <div className="auth-footnote">{info}</div> : null}
+            {error ? <div className="auth-error">{error}</div> : null}
 
-          <button className="primary-btn auth-btn" type="submit">
-            {mode === "create" ? "Create Account" : "Sign in"}
-          </button>
-        </form>
+            <button className="primary-btn auth-btn" type="submit">
+              Sign in
+            </button>
+          </form>
+
+          <div className="auth-footnote">
+            Need an account?{" "}
+            <button type="button" className="ghost-btn" onClick={() => switchMode("create")}>
+              Create one
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Create account mode
+  return (
+    <div className="auth-shell">
+      <div className="auth-card auth-card--wide">
+        <div className="auth-stepper">
+          <div className={`auth-step ${createStep >= 1 ? "auth-step--active" : ""}`}>
+            <span className="auth-step-num">1</span>
+            <span className="auth-step-label">Account</span>
+          </div>
+          <div className="auth-step-connector" />
+          <div className={`auth-step ${createStep >= 2 ? "auth-step--active" : ""}`}>
+            <span className="auth-step-num">2</span>
+            <span className="auth-step-label">Profile</span>
+          </div>
+        </div>
+
+        {createStep === 1 ? (
+          <>
+            <h1 className="auth-title">Create account</h1>
+            <p className="auth-subtitle">Set up your login credentials.</p>
+
+            <form className="auth-form" onSubmit={handleStep1}>
+              <label className="auth-label">
+                Email
+                <input
+                  className="auth-input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                />
+              </label>
+
+              <label className="auth-label">
+                Password
+                <input
+                  className="auth-input"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                  placeholder="••••••••"
+                />
+              </label>
+
+              <label className="auth-label">
+                Confirm password
+                <input
+                  className="auth-input"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  placeholder="••••••••"
+                />
+              </label>
+
+              <p className="auth-hint">
+                Minimum 8 characters with an uppercase letter, lowercase letter, and number.
+              </p>
+
+              {error ? <div className="auth-error">{error}</div> : null}
+
+              <button className="primary-btn auth-btn" type="submit">
+                Continue
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <h1 className="auth-title">Your profile</h1>
+            <p className="auth-subtitle">Tell us a bit about yourself.</p>
+
+            <form className="auth-form" onSubmit={handleStep2}>
+              <div className="auth-form-grid">
+                <label className="auth-label">
+                  First name <span className="auth-required">*</span>
+                  <input
+                    className="auth-input"
+                    type="text"
+                    value={profile.firstName}
+                    onChange={(e) => updateProfile("firstName", e.target.value)}
+                    autoComplete="given-name"
+                    placeholder="Jordan"
+                  />
+                </label>
+
+                <label className="auth-label">
+                  Last name <span className="auth-required">*</span>
+                  <input
+                    className="auth-input"
+                    type="text"
+                    value={profile.lastName}
+                    onChange={(e) => updateProfile("lastName", e.target.value)}
+                    autoComplete="family-name"
+                    placeholder="Lee"
+                  />
+                </label>
+              </div>
+
+              <label className="auth-label">
+                Organization or university
+                <input
+                  className="auth-input"
+                  type="text"
+                  value={profile.organization}
+                  onChange={(e) => updateProfile("organization", e.target.value)}
+                  autoComplete="organization"
+                  placeholder="e.g., Arizona State University"
+                />
+              </label>
+
+              <label className="auth-label">
+                Employment status
+                <select
+                  className="auth-input"
+                  value={profile.employmentStatus}
+                  onChange={(e) => updateProfile("employmentStatus", e.target.value)}
+                >
+                  {EMPLOYMENT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value} disabled={opt.value === ""}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="auth-label">
+                Target role / industry
+                <input
+                  className="auth-input"
+                  type="text"
+                  value={profile.targetRole}
+                  onChange={(e) => updateProfile("targetRole", e.target.value)}
+                  placeholder="e.g., Software Engineer, Product Management"
+                />
+              </label>
+
+              {error ? <div className="auth-error">{error}</div> : null}
+              {info ? <div className="auth-info">{info}</div> : null}
+
+              <div className="auth-step2-actions">
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => { setCreateStep(1); setError(""); }}
+                >
+                  Back
+                </button>
+                <button className="primary-btn auth-btn auth-btn--flex" type="submit">
+                  Create Account
+                </button>
+              </div>
+            </form>
+          </>
+        )}
 
         <div className="auth-footnote">
-          {mode === "create" ? "Already have an account?" : "Need an account?"}
-          {" "}
-          <button
-            type="button"
-            className="ghost-btn"
-            onClick={() => {
-              setMode((prev) => (prev === "create" ? "signin" : "create"));
-              setError("");
-              setInfo("");
-              setPassword("");
-              setConfirmPassword("");
-            }}
-          >
-            {mode === "create" ? "Sign in instead" : "Create one"}
+          Already have an account?{" "}
+          <button type="button" className="ghost-btn" onClick={() => switchMode("signin")}>
+            Sign in instead
           </button>
         </div>
       </div>

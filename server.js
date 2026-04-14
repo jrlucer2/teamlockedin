@@ -300,11 +300,19 @@ async function authenticateToken(req, res, next) {
 }
 
 app.post('/api/create-account', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, firstName, lastName, organization, employmentStatus, targetRole } = req.body;
   const normalizedEmail = normalizeEmail(email);
 
   if (!normalizedEmail || !password) {
     return res.status(400).json({ message: 'Email and password are required.' });
+  }
+
+  if (!firstName || !String(firstName).trim()) {
+    return res.status(400).json({ message: 'First name is required.' });
+  }
+
+  if (!lastName || !String(lastName).trim()) {
+    return res.status(400).json({ message: 'Last name is required.' });
   }
 
   if (!isPasswordComplex(password)) {
@@ -318,8 +326,17 @@ app.post('/api/create-account', async (req, res) => {
     try {
       const hashedPassword = await bcrypt.hash(password, 10);
       await connection.execute(
-        'INSERT INTO user (email, password) VALUES (?, ?)',
-        [normalizedEmail, hashedPassword],
+        `INSERT INTO user (email, password, user_fname, user_lname, organization, employment_status, target_role)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          normalizedEmail,
+          hashedPassword,
+          String(firstName).trim(),
+          String(lastName).trim(),
+          organization ? String(organization).trim() : null,
+          employmentStatus ? String(employmentStatus).trim() : null,
+          targetRole ? String(targetRole).trim() : null,
+        ],
       );
       res.status(201).json({ message: 'Account created successfully!' });
     } finally {
