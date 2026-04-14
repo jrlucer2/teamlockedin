@@ -69,7 +69,7 @@ function toLabel(value) {
     .join(" ");
 }
 
-function ContactModal({ title, children, onClose }) {
+function ContactModal({ title, children, footer, onClose }) {
   return (
     <div
       className="contacts-modal-backdrop"
@@ -88,12 +88,14 @@ function ContactModal({ title, children, onClose }) {
           </button>
         </div>
         <div className="contacts-modal-body">{children}</div>
+        {footer ? <div className="contacts-modal-footer">{footer}</div> : null}
       </div>
     </div>
   );
 }
 
-function ContactForm({ initial, onSave, onCancel, applications = [], initialLinkedAppIds = [] }) {
+
+function ContactForm({ initial, onSave, onCancel, applications = [], initialLinkedAppIds = [], formId }) {
   const [form, setForm] = useState(initial);
   const [error, setError] = useState("");
   const [linkedAppIds, setLinkedAppIds] = useState(new Set(initialLinkedAppIds));
@@ -144,7 +146,7 @@ function ContactForm({ initial, onSave, onCancel, applications = [], initialLink
   }
 
   return (
-    <form className="contact-form" onSubmit={submitForm}>
+    <form id={formId} className="contact-form" onSubmit={submitForm}>
       {error ? <div className="form-error">{error}</div> : null}
 
       <div className="contact-form-grid">
@@ -290,15 +292,6 @@ function ContactForm({ initial, onSave, onCancel, applications = [], initialLink
           </div>
         </div>
       )}
-
-      <div className="contacts-modal-actions">
-        <button className="ghost-btn" type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="primary-btn" type="submit">
-          Save Contact
-        </button>
-      </div>
     </form>
   );
 }
@@ -636,8 +629,22 @@ export default function Contacts({ onLogout, onNavigate }) {
       </main>
 
       {modalState.open ? (
-        <ContactModal title={modalState.editing ? "Edit Contact" : "New Contact"} onClose={closeModal}>
+        <ContactModal
+          title={modalState.editing ? "Edit Contact" : "New Contact"}
+          onClose={closeModal}
+          footer={
+            <>
+              <button className="ghost-btn" type="button" onClick={closeModal}>
+                Cancel
+              </button>
+              <button className="primary-btn" type="submit" form="contact-form">
+                Save Contact
+              </button>
+            </>
+          }
+        >
           <ContactForm
+            formId="contact-form"
             initial={modalState.editing ?? INITIAL_FORM}
             onSave={saveContact}
             onCancel={closeModal}
@@ -648,18 +655,23 @@ export default function Contacts({ onLogout, onNavigate }) {
       ) : null}
 
       {deleteTarget ? (
-        <ContactModal title="Delete Contact" onClose={() => setDeleteTarget(null)}>
+        <ContactModal
+          title="Delete Contact"
+          onClose={() => setDeleteTarget(null)}
+          footer={
+            <>
+              <button className="ghost-btn" type="button" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </button>
+              <button className="danger-btn" type="button" onClick={deleteContact}>
+                Delete
+              </button>
+            </>
+          }
+        >
           <p className="delete-confirm-copy">
             Delete <strong>{deleteTarget.name}</strong> from contacts? This action cannot be undone.
           </p>
-          <div className="contacts-modal-actions">
-            <button className="ghost-btn" type="button" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </button>
-            <button className="danger-btn" type="button" onClick={deleteContact}>
-              Delete
-            </button>
-          </div>
         </ContactModal>
       ) : null}
     </>
