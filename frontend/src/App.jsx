@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import Login from "./pages/login";
 import Dashboard from "./pages/dashboard";
+import lockedInLogo from "./assets/lockedindark.png";
+import "./styles/splash.css";
 import Applications from "./pages/applications";
 import Reminders from "./pages/reminders";
 import Contacts from "./pages/contacts";
@@ -12,6 +14,89 @@ import {
   fetchApplications,
   updateApplication,
 } from "./lib/applicationsApi";
+
+function SplashScreen() {
+  return (
+    <div className="splash-screen" aria-hidden="true">
+      <div className="splash-content">
+        <div className="splash-lock-wrap">
+          {/*
+            SVG geometry (viewBox 0 0 100 130, overflow visible):
+
+            Shackle closed path: M 28 58 L 28 43 A 22 22 0 0 0 72 43 L 72 58
+              - Arc: radius=22, center=(50,43), top=(50,21)
+              - sweep=0 (CCW) curves the arc UPWARD ✓
+              - Legs end at y=58, body starts at y=55 → 3px hidden inside body ✓
+
+            Open state (translateY -24px):
+              - Leg bottoms: 58-24 = 34, above body top (55) → fully withdrawn ✓
+              - Arc top: 21-24 = -3 → overflow:visible handles the slight clip ✓
+
+            Render order: shackle → body (masks leg tips) → holes → keyhole
+          */}
+          <svg
+            viewBox="0 0 100 130"
+            width="160"
+            height="208"
+            fill="none"
+            style={{ overflow: "visible" }}
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <defs>
+              <linearGradient id="splashBodyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor="rgba(22, 34, 58, 0.98)" />
+                <stop offset="100%" stopColor="rgba(8,  13, 26, 0.98)" />
+              </linearGradient>
+            </defs>
+
+            {/* 1. Shackle — animates translateY from -24 (open) to 0 (locked) */}
+            <g className="splash-shackle">
+              <path
+                d="M 28 58 L 28 43 A 22 22 0 0 1 72 43 L 72 58"
+                stroke="rgba(56,189,248,0.92)"
+                strokeWidth="9"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </g>
+
+            {/* 2. Lock body — covers the bottom of shackle legs when closed */}
+            <rect
+              x="5" y="55" width="90" height="72" rx="12"
+              fill="url(#splashBodyGrad)"
+              stroke="rgba(56,189,248,0.30)"
+              strokeWidth="1.5"
+            />
+
+            {/* 3. Top highlight on body */}
+            <rect
+              x="5" y="55" width="90" height="2.5" rx="1.25"
+              fill="rgba(255,255,255,0.06)"
+            />
+
+            {/* 4. Shackle entry holes — dark ovals where legs slot in */}
+            <ellipse cx="28" cy="55" rx="5.5" ry="3.5" fill="rgba(0,0,0,0.55)" />
+            <ellipse cx="72" cy="55" rx="5.5" ry="3.5" fill="rgba(0,0,0,0.55)" />
+
+            {/* 5. Keyhole — circle on top, filled slot below (no stroke on slot to avoid gap) */}
+            <circle
+              cx="50" cy="82" r="7"
+              fill="rgba(0,0,0,0.45)"
+              stroke="rgba(56,189,248,0.42)"
+              strokeWidth="1.5"
+            />
+            <rect
+              x="47" y="82" width="6" height="12" rx="3"
+              fill="rgba(0,0,0,0.45)"
+            />
+          </svg>
+        </div>
+
+        <img className="splash-logo" src={lockedInLogo} alt="LockedIn" />
+      </div>
+    </div>
+  );
+}
 
 function ThemeToggle({ theme, onToggle }) {
   const isDark = theme === "dark";
@@ -47,6 +132,23 @@ function ThemeToggle({ theme, onToggle }) {
 export default function App() {
   const [authStatus, setAuthStatus] = useState("loading");
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
+  const [showSplash, setShowSplash] = useState(false);
+
+  // Show splash on first page load (unauthenticated landing) — once per browser session
+  useEffect(() => {
+    if (authStatus === "unauthenticated" && !sessionStorage.getItem("splashShown")) {
+      sessionStorage.setItem("splashShown", "1");
+      setShowSplash(true);
+      const t = setTimeout(() => setShowSplash(false), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [authStatus]);
+
+  // Called after successful login to trigger the splash transition
+  function triggerLoginSplash() {
+    setShowSplash(true);
+    setTimeout(() => setShowSplash(false), 4000);
+  }
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -194,8 +296,10 @@ export default function App() {
   if (authStatus === "unauthenticated") {
     return (
       <>
+        {showSplash && <SplashScreen />}
         <Login
           onLoginSuccess={() => {
+            triggerLoginSplash();
             setCurrentPage("dashboard");
             setUserEmail(getStoredUserEmail());
             setAuthStatus("authenticated");
@@ -282,10 +386,12 @@ export default function App() {
   }
 
   const toggle = <ThemeToggle theme={theme} onToggle={handleToggleTheme} />;
+  const splash = showSplash ? <SplashScreen /> : null;
 
   if (currentPage === "applications") {
     return (
       <>
+        {splash}
         <Applications
           applications={applications}
           applicationsError={applicationsError}
@@ -305,21 +411,22 @@ export default function App() {
   }
 
   if (currentPage === "reminders") {
-    return <><Reminders onLogout={handleLogout} onNavigate={handleNavigate} />{toggle}</>;
+    return <>{splash}<Reminders onLogout={handleLogout} onNavigate={handleNavigate} />{toggle}</>;
   }
 
   if (currentPage === "contacts") {
-    return <><Contacts onLogout={handleLogout} onNavigate={handleNavigate} />{toggle}</>;
+    return <>{splash}<Contacts onLogout={handleLogout} onNavigate={handleNavigate} />{toggle}</>;
   }
 
   if (currentPage === "documents") {
-    return <><Documents onLogout={handleLogout} onNavigate={handleNavigate} />{toggle}</>;
+    return <>{splash}<Documents onLogout={handleLogout} onNavigate={handleNavigate} />{toggle}</>;
   }
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   return (
     <>
+      {splash}
       <Dashboard
         applications={applications}
         applicationsError={applicationsError}
