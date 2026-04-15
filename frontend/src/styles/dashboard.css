@@ -562,6 +562,110 @@ a { color: inherit; }
   color: var(--muted-2);
 }
 
+.auth-card--wide {
+  max-width: 520px;
+}
+
+/* Step indicator */
+.auth-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 20px;
+}
+
+.auth-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  opacity: 0.38;
+  transition: opacity 0.2s;
+}
+
+.auth-step--active {
+  opacity: 1;
+}
+
+.auth-step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.18);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #7dd3fc;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-step--active .auth-step-num {
+  background: rgba(56, 189, 248, 0.28);
+  border-color: rgba(56, 189, 248, 0.75);
+  color: #bae6fd;
+}
+
+.auth-step-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.auth-step--active .auth-step-label {
+  color: var(--text);
+}
+
+.auth-step-connector {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 10px;
+}
+
+/* Two-column grid for first/last name */
+.auth-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.auth-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted-2);
+  line-height: 1.4;
+}
+
+.auth-required {
+  color: rgba(239, 68, 68, 0.8);
+  font-size: 12px;
+}
+
+.auth-info {
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  background: rgba(56, 189, 248, 0.08);
+  color: #bae6fd;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.auth-step2-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.auth-btn--flex {
+  flex: 1;
+}
+
+@media (max-width: 540px) {
+  .auth-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .quick-actions,
 .session-actions {
   display: flex;
