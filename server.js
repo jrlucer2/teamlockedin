@@ -522,6 +522,46 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
   }
 });
 
+app.put('/api/profile/password', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'Current and new password are required.' });
+  }
+
+  if (!isPasswordComplex(newPassword)) {
+    return res.status(400).json({ message: 'New password must be at least 8 characters and include an uppercase letter, a lowercase letter, and a number.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        'SELECT password FROM user WHERE LOWER(email) = ?',
+        [email]
+      );
+      if (!rows.length) return res.status(404).json({ message: 'User not found.' });
+
+      const isValid = await bcrypt.compare(currentPassword, String(rows[0].password || ''));
+      if (!isValid) return res.status(401).json({ message: 'Current password is incorrect.' });
+
+      const hashed = await bcrypt.hash(newPassword, 10);
+      await connection.execute(
+        'UPDATE user SET password = ? WHERE LOWER(email) = ?',
+        [hashed, email]
+      );
+
+      res.status(200).json({ message: 'Password updated successfully.' });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error updating password.' });
+  }
+});
+
 app.delete('/api/account', authenticateToken, async (req, res) => {
   const email = normalizeEmail(req.user.email);
 

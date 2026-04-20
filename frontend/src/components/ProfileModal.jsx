@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getProfile, updateProfile, deleteAccount } from "../lib/api";
+import { getProfile, updateProfile, updatePassword, deleteAccount } from "../lib/api";
 
 const EMPLOYMENT_OPTIONS = [
   { value: "", label: "Select status..." },
@@ -9,6 +9,17 @@ const EMPLOYMENT_OPTIONS = [
   { value: "freelance", label: "Freelance / Contract" },
   { value: "other", label: "Other" },
 ];
+
+const PASSWORD_RULES = [
+  { test: (p) => p.length >= 8,           label: "At least 8 characters" },
+  { test: (p) => /[A-Z]/.test(p),         label: "One uppercase letter" },
+  { test: (p) => /[a-z]/.test(p),  label: "One lowercase letter" },
+  { test: (p) => /[0-9]/.test(p),         label: "One number" },
+];
+
+function validatePassword(password) {
+  return PASSWORD_RULES.every((r) => r.test(password));
+}
 
 export default function ProfileModal({ onClose, onLogout }) {
   const [form, setForm] = useState({
@@ -25,6 +36,13 @@ export default function ProfileModal({ onClose, onLogout }) {
   const [saved, setSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Password change state
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [pwForm, setPwForm] = useState({ current: "", next: "", confirm: "" });
+  const [pwError, setPwError] = useState("");
+  const [pwSaved, setPwSaved] = useState(false);
+  const [changingPw, setChangingPw] = useState(false);
 
   useEffect(() => {
     getProfile()
@@ -69,6 +87,51 @@ export default function ProfileModal({ onClose, onLogout }) {
     }
   }
 
+  function handlePwChange(field, value) {
+    setPwForm((prev) => ({ ...prev, [field]: value }));
+    setPwError("");
+    setPwSaved(false);
+  }
+
+  function cancelPasswordForm() {
+    setShowPasswordForm(false);
+    setPwForm({ current: "", next: "", confirm: "" });
+    setPwError("");
+    setPwSaved(false);
+  }
+
+  async function handleChangePassword() {
+    setPwError("");
+
+    if (!pwForm.current) {
+      setPwError("Please enter your current password.");
+      return;
+    }
+    if (!validatePassword(pwForm.next)) {
+      setPwError("New password doesn't meet the requirements below.");
+      return;
+    }
+    if (pwForm.next !== pwForm.confirm) {
+      setPwError("New passwords don't match.");
+      return;
+    }
+
+    setChangingPw(true);
+    try {
+      await updatePassword({ currentPassword: pwForm.current, newPassword: pwForm.next });
+      setPwSaved(true);
+      setPwForm({ current: "", next: "", confirm: "" });
+      setTimeout(() => {
+        setShowPasswordForm(false);
+        setPwSaved(false);
+      }, 2000);
+    } catch (err) {
+      setPwError(err.message || "Failed to change password.");
+    } finally {
+      setChangingPw(false);
+    }
+  }
+
   async function handleDeleteAccount() {
     setDeleting(true);
     setError("");
@@ -83,7 +146,12 @@ export default function ProfileModal({ onClose, onLogout }) {
     }
   }
 
-  const busy = saving || deleting;
+  const busy = saving || deleting || changingPw;
+
+  const pwRuleStatus = PASSWORD_RULES.map((r) => ({
+    label: r.label,
+    passing: r.test(pwForm.next),
+  }));
 
   return (
     <div
@@ -113,6 +181,7 @@ export default function ProfileModal({ onClose, onLogout }) {
             <p style={{ textAlign: "center", padding: "24px 0", opacity: 0.6 }}>Loading profile...</p>
           ) : (
             <form onSubmit={handleSave}>
+              {!showPasswordForm && <>
               <div className="dashboard-detail-grid">
                 <label className="reminder-field">
                   <span>First Name</span>
@@ -172,8 +241,103 @@ export default function ProfileModal({ onClose, onLogout }) {
                   </button>
                 </div>
               </div>
+            </>}  
 
+                            {/* ── Change Password ── */}
               <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 20 }}>
+                {!showPasswordForm ? (
+                  <button
+                    className="ghost-btn"
+                    type="button"
+                    onClick={() => setShowPasswordForm(true)}
+                    disabled={busy}
+                    style={{ width: "100%" }}
+                  >
+                    Change Password
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Change Password</p>
+
+                    {pwError && <div className="form-error">{pwError}</div>}
+                    {pwSaved && (
+                      <div style={{ fontSize: 13, color: "var(--accent)" }}>
+                        Password updated successfully.
+                      </div>
+                    )}
+
+                    <label className="reminder-field">
+                      <span>Current Password</span>
+                      <input
+                        type="password"
+                        value={pwForm.current}
+                        onChange={(e) => handlePwChange("current", e.target.value)}
+                        autoComplete="current-password"
+                        disabled={changingPw}
+                      />
+                    </label>
+                    <label className="reminder-field">
+                      <span>New Password</span>
+                      <input
+                        type="password"
+                        value={pwForm.next}
+                        onChange={(e) => handlePwChange("next", e.target.value)}
+                        autoComplete="new-password"
+                        disabled={changingPw}
+                      />
+                    </label>
+
+                    {pwForm.next.length > 0 && (
+                      <ul style={{ margin: 0, padding: "0 0 0 18px", display: "flex", flexDirection: "column", gap: 3 }}>
+                        {pwRuleStatus.map((r) => (
+                          <li
+                            key={r.label}
+                            style={{
+                              fontSize: 12,
+                              color: r.passing ? "var(--accent)" : "var(--text-muted, #999)",
+                              transition: "color 0.15s",
+                            }}
+                          >
+                            {r.passing ? "✓" : "○"} {r.label}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <label className="reminder-field">
+                      <span>Confirm New Password</span>
+                      <input
+                        type="password"
+                        value={pwForm.confirm}
+                        onChange={(e) => handlePwChange("confirm", e.target.value)}
+                        autoComplete="new-password"
+                        disabled={changingPw}
+                      />
+                    </label>
+
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                      <button
+                        className="ghost-btn"
+                        type="button"
+                        onClick={cancelPasswordForm}
+                        disabled={changingPw}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="primary-btn"
+                        type="button"
+                        onClick={handleChangePassword}
+                        disabled={changingPw}
+                      >
+                        {changingPw ? "Updating..." : "Update Password"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {!showPasswordForm && <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 20 }}>
                 {!confirmDelete ? (
                   <button
                     className="danger-btn"
@@ -198,7 +362,7 @@ export default function ProfileModal({ onClose, onLogout }) {
                     </div>
                   </div>
                 )}
-              </div>
+              </div>}
             </form>
           )}
         </div>

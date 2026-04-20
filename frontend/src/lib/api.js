@@ -178,6 +178,16 @@ export async function updateProfile(payload) {
   return data.profile;
 }
 
+export async function updatePassword(payload) {
+  const response = await authenticatedFetch('/api/profile/password', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'Failed to change password.');
+}
+
 export async function deleteAccount() {
   const response = await authenticatedFetch('/api/account', { method: 'DELETE' });
   if (!response.ok) {
