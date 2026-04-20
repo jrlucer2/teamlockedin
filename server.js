@@ -435,6 +435,88 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   res.status(200).json({ email: req.user.email });
 });
 
+app.get('/api/profile', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        'SELECT email, user_fname, user_lname, organization, employment_status, target_role FROM user WHERE LOWER(email) = ?',
+        [email],
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({ message: 'Profile not found.' });
+      }
+
+      const user = rows[0];
+      res.status(200).json({
+        profile: {
+          email: user.email,
+          firstName: user.user_fname,
+          lastName: user.user_lname,
+          organization: user.organization,
+          employmentStatus: user.employment_status,
+          targetRole: user.target_role,
+        },
+      });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error retrieving profile.' });
+  }
+});
+
+app.delete('/api/account', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+
+  try {
+    const connection = await createConnection();
+    try {
+      // Delete in order respecting foreign key-like relationships
+      await connection.execute('DELETE FROM notification WHERE email = ?', [email]);
+      await connection.execute('DELETE FROM user_preferences WHERE LOWER(email) = ?', [email]);
+      await connection.execute(
+        'DELETE ac FROM application_contact ac JOIN application a ON ac.application_id = a.application_id WHERE LOWER(a.email) = ?',
+        [email],
+      );
+      await connection.execute(
+        'DELETE ad FROM application_document ad JOIN application a ON ad.application_id = a.application_id WHERE LOWER(a.email) = ?',
+        [email],
+      );
+
+      // Delete document files from disk
+      const [docRows] = await connection.execute(
+        'SELECT file_path FROM document WHERE LOWER(email) = ?',
+        [email],
+      );
+      for (const doc of docRows) {
+        const deletePath = path.resolve(path.join(__dirname, doc.file_path));
+        const uploadDir = path.resolve(path.join(__dirname, 'uploads', 'documents'));
+        if (deletePath.startsWith(uploadDir + path.sep)) {
+          fs.promises.unlink(deletePath).catch(() => {});
+        }
+      }
+
+      await connection.execute('DELETE FROM document WHERE LOWER(email) = ?', [email]);
+      await connection.execute('DELETE FROM reminder WHERE LOWER(Email) = ?', [email]);
+      await connection.execute('DELETE FROM contact WHERE LOWER(email) = ?', [email]);
+      await connection.execute('DELETE FROM application WHERE LOWER(email) = ?', [email]);
+      await connection.execute('DELETE FROM user WHERE LOWER(email) = ?', [email]);
+
+      res.status(200).json({ message: 'Account deleted successfully.' });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error deleting account.' });
+  }
+});
+
 app.get('/api/jobs', authenticateToken, async (req, res) => {
   const email = normalizeEmail(req.user.email);
 

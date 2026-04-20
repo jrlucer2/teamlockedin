@@ -160,6 +160,23 @@ export async function clearNotifications() {
   return response.json();
 }
 
+export async function getProfile() {
+  const response = await authenticatedFetch('/api/profile');
+  if (!response.ok) throw new Error('Failed to load profile.');
+  const data = await response.json();
+  return data.profile;
+}
+
+export async function deleteAccount() {
+  const response = await authenticatedFetch('/api/account', { method: 'DELETE' });
+  if (!response.ok) {
+    let message = 'Failed to delete account.';
+    try { const d = await response.json(); message = d.message || message; } catch { /* noop */ }
+    throw new Error(message);
+  }
+  return true;
+}
+
 export function getStoredToken() {
   return localStorage.getItem("token") || "";
 }
