@@ -470,6 +470,58 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
   }
 });
 
+app.put('/api/profile', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const { firstName, lastName, organization, employmentStatus, targetRole } = req.body;
+
+  if (!firstName || !String(firstName).trim()) {
+    return res.status(400).json({ message: 'First name is required.' });
+  }
+
+  if (!lastName || !String(lastName).trim()) {
+    return res.status(400).json({ message: 'Last name is required.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [result] = await connection.execute(
+        `UPDATE user
+         SET user_fname = ?, user_lname = ?, organization = ?, employment_status = ?, target_role = ?
+         WHERE LOWER(email) = ?`,
+        [
+          String(firstName).trim(),
+          String(lastName).trim(),
+          organization ? String(organization).trim() : null,
+          employmentStatus ? String(employmentStatus).trim() : null,
+          targetRole ? String(targetRole).trim() : null,
+          email,
+        ],
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: 'Profile not found.' });
+      }
+
+      res.status(200).json({
+        profile: {
+          email,
+          firstName: String(firstName).trim(),
+          lastName: String(lastName).trim(),
+          organization: organization ? String(organization).trim() : null,
+          employmentStatus: employmentStatus ? String(employmentStatus).trim() : null,
+          targetRole: targetRole ? String(targetRole).trim() : null,
+        },
+      });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error updating profile.' });
+  }
+});
+
 app.delete('/api/account', authenticateToken, async (req, res) => {
   const email = normalizeEmail(req.user.email);
 

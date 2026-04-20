@@ -179,9 +179,11 @@
   width: min(760px, 100%);
   max-height: calc(100vh - 48px);
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(10, 16, 28, 0.95);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(20px);
+  box-shadow: var(--shadow);
+  color: var(--text);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -192,7 +194,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--border);
 }
 
 .contacts-modal-title {

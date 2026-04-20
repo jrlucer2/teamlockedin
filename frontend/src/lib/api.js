@@ -167,6 +167,17 @@ export async function getProfile() {
   return data.profile;
 }
 
+export async function updateProfile(payload) {
+  const response = await authenticatedFetch('/api/profile', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'Failed to update profile.');
+  return data.profile;
+}
+
 export async function deleteAccount() {
   const response = await authenticatedFetch('/api/account', { method: 'DELETE' });
   if (!response.ok) {
