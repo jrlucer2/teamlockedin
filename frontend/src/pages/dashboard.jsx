@@ -3,13 +3,59 @@ import lockedInLogo from "../assets/lockedindark.png";
 import { fetchDocumentBlob, fetchDocumentsForApplication, unlinkDocumentFromApplication } from "../lib/documentsApi";
 import { toTitleCase } from "../lib/formatting";
 import {
+  getContacts,
   getReminders,
   createReminder,
   updateReminder,
   deleteReminder,
+  getDashboardPreferences,
+  saveDashboardPreferences,
+  fetchContactsForApplication,
+  linkContactToApplication,
+  unlinkContactFromApplication,
 } from "../lib/api";
+import ProfileModal from "../components/ProfileModal";
 
 const STATUS_OPTIONS = ["saved", "applied", "interviewing", "offer", "rejected"];
+
+const METRIC_OPTIONS = [
+  { value: "totalApplications", label: "Total Applications" },
+  { value: "activeInterviews", label: "Active Interviews" },
+  { value: "pendingReminders", label: "Pending Reminders" },
+  { value: "totalReminders", label: "Total Reminders" },
+  { value: "totalContacts", label: "Total Contacts" },
+  { value: "savedApplications", label: "Saved" },
+  { value: "appliedApplications", label: "Applied" },
+  { value: "offers", label: "Offers" },
+  { value: "rejected", label: "Rejected" },
+];
+
+function MetricCard({ metricKey, metricValue, onSelect }) {
+  const selectedLabel = METRIC_OPTIONS.find((o) => o.value === metricKey)?.label ?? metricKey;
+  return (
+    <div className="metric-card">
+      <select
+        className="metric-select"
+        value={metricKey}
+        onChange={(event) => onSelect(event.target.value)}
+        aria-label="Select metric to display"
+      >
+        {METRIC_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <div className="metric-label">
+        <span>{selectedLabel}</span>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </div>
+      <div className="metric-value">{metricValue}</div>
+    </div>
+  );
+}
 
 function normalize(value) {
   return String(value ?? "").toLowerCase().trim();
@@ -175,6 +221,28 @@ function ApplicationCard({ app, deletingId, onDelete, onOpenDetails, onOpenStatu
               {app.doc_count}
             </span>
           )}
+          {app.contact_count > 0 && (
+            <span
+              className="app-doc-count"
+              title={`${app.contact_count} linked contact${app.contact_count !== 1 ? "s" : ""}`}
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              {app.contact_count}
+            </span>
+          )}
           <StatusPill status={app.job_status} onClick={() => onOpenStatusEditor(app)} />
         </div>
       </div>
@@ -210,6 +278,41 @@ function DetailRow({ label, value }) {
   );
 }
 
+function LinkedContactSelector({ allContacts, linkedContacts, onLink }) {
+  const [selectedId, setSelectedId] = useState("");
+
+  const linkedIds = new Set(linkedContacts.map((c) => c.contact_id));
+  const available = allContacts.filter((c) => !linkedIds.has(c.contact_id));
+
+  if (!available.length) return null;
+
+  function handleLink() {
+    if (!selectedId) return;
+    onLink(Number(selectedId));
+    setSelectedId("");
+  }
+
+  return (
+    <div className="dashboard-link-contact-row">
+      <select
+        value={selectedId}
+        onChange={(e) => setSelectedId(e.target.value)}
+        aria-label="Select contact to link"
+      >
+        <option value="">Add a contact...</option>
+        {available.map((c) => (
+          <option key={c.contact_id} value={c.contact_id}>
+            {c.contact_name}{c.contact_company ? ` · ${c.contact_company}` : ""}
+          </option>
+        ))}
+      </select>
+      <button className="ghost-btn" type="button" onClick={handleLink} disabled={!selectedId}>
+        Link
+      </button>
+    </div>
+  );
+}
+
 function ApplicationDetailModal({
   application,
   error,
@@ -217,10 +320,15 @@ function ApplicationDetailModal({
   isStatusFocused,
   linkedDocuments,
   isLoadingDocs,
+  linkedContacts,
+  isLoadingContacts,
+  allContacts,
   onClose,
   onSave,
   onViewDocument,
   onUnlinkDocument,
+  onLinkContact,
+  onUnlinkContact,
   statusValue,
   onStatusChange,
 }) {
@@ -319,6 +427,43 @@ function ApplicationDetailModal({
             )}
           </div>
 
+          <div className="dashboard-copy-block">
+            <span className="dashboard-detail-label">Linked Contacts</span>
+            {isLoadingContacts ? (
+              <p className="dashboard-docs-loading">Loading contacts...</p>
+            ) : (
+              <>
+                {!linkedContacts || linkedContacts.length === 0 ? (
+                  <p className="dashboard-docs-empty">No contacts linked to this application.</p>
+                ) : (
+                  <ul className="dashboard-doc-list">
+                    {linkedContacts.map((c) => (
+                      <li key={c.contact_id} className="dashboard-doc-item">
+                        <span className="dashboard-doc-type">{c.contact_role || c.relationship_strength || ""}</span>
+                        <span className="dashboard-doc-name">
+                          {c.contact_name}
+                          {c.contact_company ? ` · ${c.contact_company}` : ""}
+                        </span>
+                        <button
+                          className="danger-btn"
+                          type="button"
+                          onClick={() => onUnlinkContact(c.contact_id)}
+                        >
+                          Unlink
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <LinkedContactSelector
+                  allContacts={allContacts}
+                  linkedContacts={linkedContacts ?? []}
+                  onLink={onLinkContact}
+                />
+              </>
+            )}
+          </div>
+
           <div className="dashboard-modal-actions">
             {application.job_url ? (
               <a className="ghost-btn dashboard-modal-link" href={application.job_url} target="_blank" rel="noreferrer">
@@ -346,24 +491,36 @@ export default function Dashboard({
   hasLoadedApplications,
   applicationsStatus,
   onDeleteApplication,
+  onDecrementDocCount,
+  onIncrementContactCount,
+  onDecrementContactCount,
   onLogout,
   onNavigate,
   onUpdateApplication,
+  notifications = [],
+  unreadCount = 0,
+  onMarkAllRead,
+  onClearNotifications,
 }) {
   const [reminders, setReminders] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [metricSelections, setMetricSelections] = useState(["totalApplications", "activeInterviews", "pendingReminders"]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
-  const [viewMode, setViewMode] = useState("cards");
   const [deleteError, setDeleteError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
   const [selectedApplication, setSelectedApplication] = useState(null);
+
   const [detailStatus, setDetailStatus] = useState("");
   const [detailError, setDetailError] = useState("");
   const [isSavingDetail, setIsSavingDetail] = useState(false);
   const [detailMode, setDetailMode] = useState("view");
   const [linkedDocuments, setLinkedDocuments] = useState(null);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [linkedContacts, setLinkedContacts] = useState(null);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isReminderDropdownOpen, setIsReminderDropdownOpen] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [reminderError, setReminderError] = useState("");
@@ -384,13 +541,14 @@ export default function Dashboard({
   const viewedUrlsRef = useRef([]);
   const bellButtonRef = useRef(null);
   const reminderDropdownRef = useRef(null);
+  const preferencesLoadedRef = useRef(false);
 
   useEffect(() => {
-    if (!selectedApplication) return;
+  if (!selectedApplication) return;
 
-    const nextSelectedApplication = applications.find(
-      (application) => application.application_id === selectedApplication.application_id,
-    );
+  const nextSelectedApplication = applications.find(
+    (application) => application.application_id === selectedApplication.application_id,
+  );
 
     if (!nextSelectedApplication) {
       setSelectedApplication(null);
@@ -419,6 +577,52 @@ export default function Dashboard({
   }, []);
 
   useEffect(() => {
+    async function loadContacts() {
+      try {
+        const data = await getContacts();
+        setContacts(Array.isArray(data.contacts) ? data.contacts : []);
+      } catch {
+        // non-critical, leave contacts empty
+      }
+    }
+
+    loadContacts();
+  }, []);
+
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+
+  // load effect
+   useEffect(() => {
+    async function loadMetricPreferences() {
+      try {
+        const data = await getDashboardPreferences();
+        if (Array.isArray(data.metrics) && data.metrics.length === 3) {
+          setMetricSelections(data.metrics);
+        }
+      } catch {
+        // fall back to defaults silently
+      } finally {
+        preferencesLoadedRef.current = true;
+        setPreferencesLoaded(true);
+      }
+    }
+    loadMetricPreferences();
+  }, []);
+
+  // save effect
+    useEffect(() => {
+    if (!preferencesLoadedRef.current) return;
+    async function saveMetricPreferences() {
+      try {
+        await saveDashboardPreferences(metricSelections);
+      } catch {
+        // non-critical
+      }
+    }
+    saveMetricPreferences();
+  }, [metricSelections]);
+
+  useEffect(() => {
     function handleClickOutside(event) {
       if (!isReminderDropdownOpen) return;
 
@@ -436,12 +640,17 @@ export default function Dashboard({
     };
   }, [isReminderDropdownOpen]);
 
-  const metrics = useMemo(() => ({
+  const allMetrics = useMemo(() => ({
     totalApplications: applications.length,
-    activeInterviews: applications.filter(
-      (application) => normalize(application.job_status) === "interviewing",
-    ).length,
-  }), [applications]);
+    activeInterviews: applications.filter((a) => normalize(a.job_status) === "interviewing").length,
+    pendingReminders: reminders.filter((r) => r.Reminder_Status === "Pending").length,
+    totalReminders: reminders.length,
+    totalContacts: contacts.length,
+    savedApplications: applications.filter((a) => normalize(a.job_status) === "saved").length,
+    appliedApplications: applications.filter((a) => normalize(a.job_status) === "applied").length,
+    offers: applications.filter((a) => normalize(a.job_status) === "offer").length,
+    rejected: applications.filter((a) => normalize(a.job_status) === "rejected").length,
+  }), [applications, reminders, contacts]);
 
   const filteredApplications = useMemo(() => {
     const q = normalize(query);
@@ -463,8 +672,12 @@ export default function Dashboard({
       list = [...list].sort((left, right) => left.application_id - right.application_id);
     }
 
-    if (sortBy === "company") {
+    if (sortBy === "company-asc") {
       list = [...list].sort((left, right) => left.company.localeCompare(right.company));
+    }
+
+    if (sortBy === "company-desc") {
+      list = [...list].sort((left, right) => right.company.localeCompare(left.company));
     }
 
     if (sortBy === "status") {
@@ -587,6 +800,12 @@ export default function Dashboard({
       .then((docs) => setLinkedDocuments(docs))
       .catch(() => setLinkedDocuments([]))
       .finally(() => setIsLoadingDocs(false));
+    setLinkedContacts(null);
+    setIsLoadingContacts(true);
+    fetchContactsForApplication(application.application_id)
+      .then((rows) => setLinkedContacts(rows))
+      .catch(() => setLinkedContacts([]))
+      .finally(() => setIsLoadingContacts(false));
   }
 
   function handleOpenDetails(application) {
@@ -607,6 +826,8 @@ export default function Dashboard({
     setDetailMode("view");
     setLinkedDocuments(null);
     setIsLoadingDocs(false);
+    setLinkedContacts(null);
+    setIsLoadingContacts(false);
   }
 
   async function handleSaveStatus() {
@@ -644,8 +865,31 @@ export default function Dashboard({
     try {
       await unlinkDocumentFromApplication(documentId, selectedApplication.application_id);
       setLinkedDocuments((prev) => (prev ?? []).filter((doc) => doc.id !== documentId));
+      onDecrementDocCount?.(selectedApplication.application_id);
     } catch (error) {
       setDetailError(error?.message || "Could not unlink document.");
+    }
+  }
+
+  async function handleLinkContact(contactId) {
+    if (!selectedApplication) return;
+    try {
+      const data = await linkContactToApplication(selectedApplication.application_id, contactId);
+      setLinkedContacts((prev) => [...(prev ?? []), data.contact]);
+      onIncrementContactCount?.(selectedApplication.application_id);
+    } catch (error) {
+      setDetailError(error?.message || "Could not link contact.");
+    }
+  }
+
+  async function handleUnlinkContact(contactId) {
+    if (!selectedApplication) return;
+    try {
+      await unlinkContactFromApplication(selectedApplication.application_id, contactId);
+      setLinkedContacts((prev) => (prev ?? []).filter((c) => c.contact_id !== contactId));
+      onDecrementContactCount?.(selectedApplication.application_id);
+    } catch (error) {
+      setDetailError(error?.message || "Could not unlink contact.");
     }
   }
 
@@ -653,7 +897,6 @@ export default function Dashboard({
     setQuery("");
     setStatusFilter("all");
     setSortBy("newest");
-    setViewMode("cards");
     setDeleteError("");
   }
 
@@ -693,7 +936,7 @@ export default function Dashboard({
             <button
               ref={bellButtonRef}
               className={`icon-btn ${isReminderDropdownOpen ? "is-open" : ""}`}
-              style={iconBtnInline}
+              style={{ ...iconBtnInline, position: "relative" }}
               type="button"
               aria-label="Notifications"
               onClick={() => setIsReminderDropdownOpen((prev) => !prev)}
@@ -714,6 +957,31 @@ export default function Dashboard({
                 <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
                 <path d="M13.73 21a2 2 0 01-3.46 0" />
               </svg>
+              {unreadCount > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "-4px",
+                    right: "-4px",
+                    background: "#e53e3e",
+                    color: "#fff",
+                    borderRadius: "50%",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    minWidth: "16px",
+                    height: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    lineHeight: 1,
+                    padding: "0 3px",
+                    pointerEvents: "none",
+                  }}
+                  aria-label={`${unreadCount} unread notifications`}
+                >
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </button>
 
             {isReminderDropdownOpen && (
@@ -723,6 +991,51 @@ export default function Dashboard({
                 role="dialog"
                 aria-label="Reminders dropdown"
               >
+                {notifications.length > 0 && (
+                  <div style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "8px", marginBottom: "4px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 6px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 600, opacity: 0.7, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        Notifications
+                      </span>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        {unreadCount > 0 && (
+                          <button
+                            className="ghost-btn"
+                            type="button"
+                            style={{ fontSize: "11px", padding: "2px 8px" }}
+                            onClick={onMarkAllRead}
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                        <button
+                          className="ghost-btn"
+                          type="button"
+                          style={{ fontSize: "11px", padding: "2px 8px" }}
+                          onClick={onClearNotifications}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      {notifications.slice(0, 5).map((notif) => (
+                        <div
+                          key={notif.notification_id}
+                          style={{
+                            padding: "8px 16px",
+                            opacity: notif.is_read ? 0.5 : 1,
+                            borderLeft: notif.is_read ? "none" : "2px solid #4a9eff",
+                          }}
+                        >
+                          <div style={{ fontSize: "13px", fontWeight: 600 }}>{notif.title}</div>
+                          <div style={{ fontSize: "12px", opacity: 0.75, marginTop: "2px" }}>{notif.message}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="reminder-dropdown-header">
                   <div>
                     <h3 className="reminder-dropdown-title">Reminders</h3>
@@ -842,26 +1155,7 @@ export default function Dashboard({
               </div>
             )}
 
-            <button className="icon-btn" style={iconBtnInline} type="button" aria-label="Settings">
-              <svg
-                style={iconSvgInline}
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06A1.65 1.65 0 0015 19.4a1.65 1.65 0 00-1 .6 1.65 1.65 0 00-.33 1.82V22a2 2 0 11-4 0v-.18a1.65 1.65 0 00-.33-1.82 1.65 1.65 0 00-1-.6 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-.6-1 1.65 1.65 0 00-1.82-.33H2a2 2 0 110-4h.18a1.65 1.65 0 001.82-.33 1.65 1.65 0 00.6-1 1.65 1.65 0 00-.33-1.82l-.06-.06A2 2 0 116.04 3.6l.06.06A1.65 1.65 0 008 4.6c.39 0 .77-.14 1.06-.4.29-.26.5-.62.57-1.01V3a2 2 0 114 0v.18c.07.39.28.75.57 1.01.29.26.67.4 1.06.4.39 0 .77-.14 1.06-.4l.06-.06A2 2 0 1120.4 6.04l-.06.06c-.26.29-.4.67-.4 1.06 0 .39.14.77.4 1.06.26.29.62.5 1.01.57H22a2 2 0 110 4h-.18c-.39.07-.75.28-1.01.57-.26.29-.4.67-.4 1.06z" />
-              </svg>
-            </button>
-
-            <button className="icon-btn" style={iconBtnInline} type="button" aria-label="Profile">
+            <button className="icon-btn" style={iconBtnInline} type="button" aria-label="Profile" onClick={() => setIsProfileModalOpen(true)}>
               <svg
                 style={iconSvgInline}
                 width="18"
@@ -889,21 +1183,65 @@ export default function Dashboard({
 
       <main className="dashboard" aria-label="Dashboard">
         <section className="metrics" aria-label="Key metrics">
-          <div className="metric-card">
-            <div className="metric-label">Total Applications</div>
-            <div className="metric-value">{metrics.totalApplications}</div>
-          </div>
-
-          <div className="metric-card">
-            <div className="metric-label">Active Interviews</div>
-            <div className="metric-value">{metrics.activeInterviews}</div>
-          </div>
+          {preferencesLoaded ? (
+            <>
+              <MetricCard
+                metricKey={metricSelections[0]}
+                metricValue={allMetrics[metricSelections[0]]}
+                onSelect={(key) => setMetricSelections((prev) => [key, prev[1], prev[2]])}
+              />
+              <MetricCard
+                metricKey={metricSelections[1]}
+                metricValue={allMetrics[metricSelections[1]]}
+                onSelect={(key) => setMetricSelections((prev) => [prev[0], key, prev[2]])}
+              />
+              <MetricCard
+                metricKey={metricSelections[2]}
+                metricValue={allMetrics[metricSelections[2]]}
+                onSelect={(key) => setMetricSelections((prev) => [prev[0], prev[1], key])}
+              />
+            </>
+          ) : (
+            <>
+              <div className="metric-card" />
+              <div className="metric-card" />
+              <div className="metric-card" />
+            </>
+          )}
 
           <div className="metric-card">
             <div className="metric-label">Set Reminders</div>
             <div className="metric-value">{reminders.length}</div>
           </div>
         </section>
+
+        {/*<main className="dashboard" aria-label="Dashboard">
+          <section className="metrics" aria-label="Key metrics">
+            {preferencesLoaded ? (
+              <>
+                <MetricCard
+                  metricKey={metricSelections[0]}
+                  metricValue={allMetrics[metricSelections[0]]}
+                  onSelect={(key) => setMetricSelections((prev) => [key, prev[1], prev[2]])}
+                />
+                <MetricCard
+                  metricKey={metricSelections[1]}
+                  metricValue={allMetrics[metricSelections[1]]}
+                  onSelect={(key) => setMetricSelections((prev) => [prev[0], key, prev[2]])}
+                />
+                <MetricCard
+                  metricKey={metricSelections[2]}
+                  metricValue={allMetrics[metricSelections[2]]}
+                  onSelect={(key) => setMetricSelections((prev) => [prev[0], prev[1], key])}
+                />
+              </>
+            ) : null}
+
+            <div className="metric-card">
+              <div className="metric-label">Set Reminders</div>
+              <div className="metric-value">{reminders.length}</div>
+            </div>
+          </section>*/}
 
         <section className="controls" aria-label="Dashboard controls">
           <div className="controls-row">
@@ -942,11 +1280,13 @@ export default function Dashboard({
               <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} aria-label="Sort">
                 <option value="newest">Sort: Newest</option>
                 <option value="oldest">Oldest</option>
-                <option value="company">Company</option>
+                <option value="company-asc">Company (A → Z)</option>
+                <option value="company-desc">Company (Z → A)</option>
                 <option value="status">Status</option>
               </select>
             </div>
 
+            {/*
             <div className="control">
               <select value={viewMode} onChange={(event) => setViewMode(event.target.value)} aria-label="View">
                 <option value="cards">View: Cards</option>
@@ -956,6 +1296,7 @@ export default function Dashboard({
               </select>
             </div>
 
+            
             <div className="quick-actions" aria-label="Quick actions">
               <button className="ghost-btn" type="button" disabled>
                 Bulk Edit
@@ -964,6 +1305,7 @@ export default function Dashboard({
                 Export
               </button>
             </div>
+            */}
 
             <div className="session-actions" aria-label="Session actions">
               <button className="ghost-btn" type="button" onClick={handleResetView}>
@@ -988,12 +1330,7 @@ export default function Dashboard({
               </div>
             </div>
 
-            {viewMode !== "cards" ? (
-              <div className="empty-state">
-                <div className="empty-title">Table view is coming later.</div>
-                <div className="empty-subtitle">For now, switch back to Cards.</div>
-              </div>
-            ) : isLoading ? (
+            {isLoading ? (
               <div className="empty-state">
                 <div className="empty-title">Loading applications...</div>
                 <div className="empty-subtitle">Fetching your saved jobs from the backend.</div>
@@ -1032,18 +1369,19 @@ export default function Dashboard({
               </button>
             </div>
 
-            {!reminders.length ? (
-              <div className="upcoming-reminders-empty">No reminders yet.</div>
-            ) : (
-              <ul className="upcoming-reminders-list">
-                {reminders
-                  .slice()
-                  .sort((a, b) => {
-                    const da = a.Reminder_Due_Date ? new Date(a.Reminder_Due_Date).getTime() : Infinity;
-                    const db = b.Reminder_Due_Date ? new Date(b.Reminder_Due_Date).getTime() : Infinity;
-                    return da - db;
-                  })
-                  .map((reminder) => (
+            {(() => {
+              const pending = reminders
+                .filter((r) => r.Reminder_Status === "Pending")
+                .slice()
+                .sort((a, b) => {
+                  const da = a.Reminder_Due_Date ? new Date(a.Reminder_Due_Date).getTime() : Infinity;
+                  const db = b.Reminder_Due_Date ? new Date(b.Reminder_Due_Date).getTime() : Infinity;
+                  return da - db;
+                });
+              if (!pending.length) return <div className="upcoming-reminders-empty">No pending reminders.</div>;
+              return (
+                <ul className="upcoming-reminders-list">
+                  {pending.map((reminder) => (
                     <li key={reminder.Reminder_ID} className="upcoming-reminder-item">
                       <span className="upcoming-reminder-date">
                         {formatReminderDate(reminder.Reminder_Due_Date)}
@@ -1051,8 +1389,9 @@ export default function Dashboard({
                       <span className="upcoming-reminder-title">{reminder.Reminder_Title}</span>
                     </li>
                   ))}
-              </ul>
-            )}
+                </ul>
+              );
+            })()}
           </aside>
         </section>
       </main>
@@ -1065,12 +1404,24 @@ export default function Dashboard({
           isStatusFocused={detailMode === "status"}
           linkedDocuments={linkedDocuments}
           isLoadingDocs={isLoadingDocs}
+          linkedContacts={linkedContacts}
+          isLoadingContacts={isLoadingContacts}
+          allContacts={contacts}
           onClose={handleCloseDetails}
           onSave={handleSaveStatus}
           onViewDocument={handleViewDocument}
           onUnlinkDocument={handleUnlinkDocument}
+          onLinkContact={handleLinkContact}
+          onUnlinkContact={handleUnlinkContact}
           onStatusChange={setDetailStatus}
           statusValue={detailStatus}
+        />
+      ) : null}
+
+      {isProfileModalOpen ? (
+        <ProfileModal
+          onClose={() => setIsProfileModalOpen(false)}
+          onLogout={onLogout}
         />
       ) : null}
 
@@ -1142,8 +1493,8 @@ export default function Dashboard({
 
                 <label className="reminder-field">
                   <span>Category</span>
-                  <select name="category" value={reminderForm.category} onChange={handleReminderInputChange}>
-                    <option value="">Select category</option>
+                  <select name="category" value={reminderForm.category} onChange={handleReminderInputChange} required>
+                    <option value="" disabled>Select category</option>
                     <option value="Interview">Interview</option>
                     <option value="Follow-up">Follow-up</option>
                     <option value="Reference">Reference</option>
@@ -1154,8 +1505,8 @@ export default function Dashboard({
 
                 <label className="reminder-field">
                   <span>Priority</span>
-                  <select name="priority" value={reminderForm.priority} onChange={handleReminderInputChange}>
-                    <option value="">Select priority</option>
+                  <select name="priority" value={reminderForm.priority} onChange={handleReminderInputChange} required>
+                    <option value="" disabled>Select priority</option>
                     <option value="Low">Low</option>
                     <option value="Medium">Medium</option>
                     <option value="High">High</option>
@@ -1189,7 +1540,6 @@ export default function Dashboard({
                     value={reminderForm.dueTime}
                     onChange={handleReminderInputChange}
                     type="time"
-                    required
                   />
                 </label>
               </div>

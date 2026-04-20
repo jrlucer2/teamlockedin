@@ -1,0 +1,88 @@
+/* ── Splash screen overlay ───────────────────────────────────────────── */
+
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse 900px 600px at 40% 20%, rgba(56, 189, 248, 0.06), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 65% 80%, rgba(99, 102, 241, 0.05), transparent 60%),
+    #090e1a;
+  animation: splash-fade-out 0.55s ease-in 3.45s forwards;
+}
+
+.splash-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  animation: splash-content-in 0.45s ease-out forwards;
+}
+
+/* The SVG wrapper drives the glow effect */
+.splash-lock-wrap {
+  animation: lock-glow 3.5s ease-out forwards;
+}
+
+/* Shackle group – translates from open (raised) to closed (inserted) */
+.splash-shackle {
+  animation: shackle-close 3.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.splash-logo {
+  height: 52px;
+  opacity: 0;
+  animation: logo-rise 0.55s ease-out 0.35s forwards;
+  filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.20));
+}
+
+/* ── Keyframes ───────────────────────────────────────────────────────── */
+
+/* Hold open → slow close → tiny bounce → settle */
+@keyframes shackle-close {
+  0%   { transform: translateY(-24px); }   /* open  */
+  33%  { transform: translateY(-24px); }   /* hold  */
+  74%  { transform: translateY(0px);   }   /* closes into body */
+  80%  { transform: translateY(-4px);  }   /* bounce up        */
+  88%  { transform: translateY(1px);   }   /* settle past zero */
+  100% { transform: translateY(0px);   }   /* locked           */
+}
+
+/* Glow burst fires as shackle snaps shut (~74% of 3.5 s ≈ 2.6 s) */
+@keyframes lock-glow {
+  0%, 70% {
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
+  }
+  77% {
+    filter:
+      drop-shadow(0 0 28px rgba(56, 189, 248, 0.95))
+      drop-shadow(0 0 56px rgba(56, 189, 248, 0.40));
+  }
+  87% {
+    filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.55));
+  }
+  100% {
+    filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.30));
+  }
+}
+
+/* Whole overlay fades away */
+@keyframes splash-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; pointer-events: none; }
+}
+
+/* Content rises up on mount */
+@keyframes splash-content-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* Logo fades and rises beneath the lock */
+@keyframes logo-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}

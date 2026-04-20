@@ -248,6 +248,13 @@ function validateReminderPayload(reminder) {
   return errors;
 }
 
+async function insertNotification(connection, email, type, title, message, applicationId = null) {
+  await connection.execute(
+    'INSERT INTO notification (email, type, title, message, application_id) VALUES (?, ?, ?, ?, ?)',
+    [email, type, title, message, applicationId],
+  );
+}
+
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.startsWith('Bearer ')
@@ -293,11 +300,19 @@ async function authenticateToken(req, res, next) {
 }
 
 app.post('/api/create-account', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, firstName, lastName, organization, employmentStatus, targetRole } = req.body;
   const normalizedEmail = normalizeEmail(email);
 
   if (!normalizedEmail || !password) {
     return res.status(400).json({ message: 'Email and password are required.' });
+  }
+
+  if (!firstName || !String(firstName).trim()) {
+    return res.status(400).json({ message: 'First name is required.' });
+  }
+
+  if (!lastName || !String(lastName).trim()) {
+    return res.status(400).json({ message: 'Last name is required.' });
   }
 
   if (!isPasswordComplex(password)) {
@@ -311,8 +326,17 @@ app.post('/api/create-account', async (req, res) => {
     try {
       const hashedPassword = await bcrypt.hash(password, 10);
       await connection.execute(
-        'INSERT INTO user (email, password) VALUES (?, ?)',
-        [normalizedEmail, hashedPassword],
+        `INSERT INTO user (email, password, user_fname, user_lname, organization, employment_status, target_role)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          normalizedEmail,
+          hashedPassword,
+          String(firstName).trim(),
+          String(lastName).trim(),
+          organization ? String(organization).trim() : null,
+          employmentStatus ? String(employmentStatus).trim() : null,
+          targetRole ? String(targetRole).trim() : null,
+        ],
       );
       res.status(201).json({ message: 'Account created successfully!' });
     } finally {
@@ -379,7 +403,7 @@ app.post('/api/login', async (req, res) => {
       const token = jwt.sign(
         { email: user.email, userId: user.email },
         process.env.JWT_SECRET,
-        { expiresIn: '1h' },
+        { expiresIn: '24h' },
       );
 
       res.status(200).json({ token });
@@ -411,6 +435,140 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   res.status(200).json({ email: req.user.email });
 });
 
+app.get('/api/profile', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        'SELECT email, user_fname, user_lname, organization, employment_status, target_role FROM user WHERE LOWER(email) = ?',
+        [email],
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({ message: 'Profile not found.' });
+      }
+
+      const user = rows[0];
+      res.status(200).json({
+        profile: {
+          email: user.email,
+          firstName: user.user_fname,
+          lastName: user.user_lname,
+          organization: user.organization,
+          employmentStatus: user.employment_status,
+          targetRole: user.target_role,
+        },
+      });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error retrieving profile.' });
+  }
+});
+
+app.put('/api/profile', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const { firstName, lastName, organization, employmentStatus, targetRole } = req.body;
+
+  if (!firstName || !String(firstName).trim()) {
+    return res.status(400).json({ message: 'First name is required.' });
+  }
+
+  if (!lastName || !String(lastName).trim()) {
+    return res.status(400).json({ message: 'Last name is required.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [result] = await connection.execute(
+        `UPDATE user
+         SET user_fname = ?, user_lname = ?, organization = ?, employment_status = ?, target_role = ?
+         WHERE LOWER(email) = ?`,
+        [
+          String(firstName).trim(),
+          String(lastName).trim(),
+          organization ? String(organization).trim() : null,
+          employmentStatus ? String(employmentStatus).trim() : null,
+          targetRole ? String(targetRole).trim() : null,
+          email,
+        ],
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: 'Profile not found.' });
+      }
+
+      res.status(200).json({
+        profile: {
+          email,
+          firstName: String(firstName).trim(),
+          lastName: String(lastName).trim(),
+          organization: organization ? String(organization).trim() : null,
+          employmentStatus: employmentStatus ? String(employmentStatus).trim() : null,
+          targetRole: targetRole ? String(targetRole).trim() : null,
+        },
+      });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error updating profile.' });
+  }
+});
+
+app.delete('/api/account', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+
+  try {
+    const connection = await createConnection();
+    try {
+      // Delete in order respecting foreign key-like relationships
+      await connection.execute('DELETE FROM notification WHERE email = ?', [email]);
+      await connection.execute('DELETE FROM user_preferences WHERE LOWER(email) = ?', [email]);
+      await connection.execute(
+        'DELETE ac FROM application_contact ac JOIN application a ON ac.application_id = a.application_id WHERE LOWER(a.email) = ?',
+        [email],
+      );
+      await connection.execute(
+        'DELETE ad FROM application_document ad JOIN application a ON ad.application_id = a.application_id WHERE LOWER(a.email) = ?',
+        [email],
+      );
+
+      // Delete document files from disk
+      const [docRows] = await connection.execute(
+        'SELECT file_path FROM document WHERE LOWER(email) = ?',
+        [email],
+      );
+      for (const doc of docRows) {
+        const deletePath = path.resolve(path.join(__dirname, doc.file_path));
+        const uploadDir = path.resolve(path.join(__dirname, 'uploads', 'documents'));
+        if (deletePath.startsWith(uploadDir + path.sep)) {
+          fs.promises.unlink(deletePath).catch(() => {});
+        }
+      }
+
+      await connection.execute('DELETE FROM document WHERE LOWER(email) = ?', [email]);
+      await connection.execute('DELETE FROM reminder WHERE LOWER(Email) = ?', [email]);
+      await connection.execute('DELETE FROM contact WHERE LOWER(email) = ?', [email]);
+      await connection.execute('DELETE FROM application WHERE LOWER(email) = ?', [email]);
+      await connection.execute('DELETE FROM user WHERE LOWER(email) = ?', [email]);
+
+      res.status(200).json({ message: 'Account deleted successfully.' });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error deleting account.' });
+  }
+});
+
 app.get('/api/jobs', authenticateToken, async (req, res) => {
   const email = normalizeEmail(req.user.email);
 
@@ -433,9 +591,11 @@ app.get('/api/jobs', authenticateToken, async (req, res) => {
           a.job_url,
           a.job_description,
           a.application_notes,
-          COUNT(ad.document_id) AS doc_count
+          COUNT(DISTINCT ad.document_id) AS doc_count,
+          COUNT(DISTINCT ac.contact_id) AS contact_count
         FROM application a
         LEFT JOIN application_document ad ON a.application_id = ad.application_id
+        LEFT JOIN application_contact ac ON a.application_id = ac.application_id
         WHERE LOWER(a.email) = ?
         GROUP BY a.application_id
         ORDER BY a.application_id DESC`,
@@ -502,6 +662,15 @@ app.post('/api/jobs', authenticateToken, async (req, res) => {
         ...application,
       };
 
+      await insertNotification(
+        connection,
+        application.email,
+        'application_created',
+        `Application Saved: ${application.job_title}`,
+        `You saved an application for ${application.job_title} at ${application.company}.`,
+        result.insertId,
+      );
+
       res.status(201).json({
         job: createdJob,
         application: createdJob,
@@ -532,6 +701,11 @@ app.put('/api/jobs/:applicationId', authenticateToken, async (req, res) => {
   try {
     const connection = await createConnection();
     try {
+      const [existing] = await connection.execute(
+        'SELECT job_status, job_title, company FROM application WHERE application_id = ? AND LOWER(email) = ?',
+        [applicationId, email],
+      );
+
       const [result] = await connection.execute(
         `UPDATE application
         SET
@@ -568,6 +742,27 @@ app.put('/api/jobs/:applicationId', authenticateToken, async (req, res) => {
 
       if (result.affectedRows === 0) {
         return res.status(404).json({ message: 'Application not found.' });
+      }
+
+      const oldStatus = existing[0]?.job_status;
+      if (oldStatus && application.job_status !== oldStatus) {
+        const jobTitle = existing[0]?.job_title || 'Application';
+        const company = existing[0]?.company ? ` at ${existing[0].company}` : '';
+        const statusLabels = {
+          saved: 'Saved',
+          applied: 'Applied',
+          interviewing: 'Interviewing',
+          offer: 'Offer Received',
+          rejected: 'Rejected',
+        };
+        await insertNotification(
+          connection,
+          email,
+          'status_changed',
+          `Status Updated: ${jobTitle}`,
+          `Your application for ${jobTitle}${company} is now "${statusLabels[application.job_status] || application.job_status}".`,
+          applicationId,
+        );
       }
 
       res.status(200).json({
@@ -612,6 +807,60 @@ app.delete('/api/jobs/:applicationId', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error deleting application.' });
+  }
+});
+
+app.get('/api/notifications', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        'SELECT notification_id, type, title, message, application_id, is_read, created_at FROM notification WHERE email = ? ORDER BY created_at DESC LIMIT 30',
+        [email],
+      );
+      res.status(200).json({ notifications: rows });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error fetching notifications.' });
+  }
+});
+
+app.put('/api/notifications/read-all', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  try {
+    const connection = await createConnection();
+    try {
+      await connection.execute(
+        'UPDATE notification SET is_read = 1 WHERE email = ?',
+        [email],
+      );
+      res.status(200).json({ message: 'All notifications marked as read.' });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error updating notifications.' });
+  }
+});
+
+app.delete('/api/notifications', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  try {
+    const connection = await createConnection();
+    try {
+      await connection.execute('DELETE FROM notification WHERE email = ?', [email]);
+      res.status(200).json({ message: 'Notifications cleared.' });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error clearing notifications.' });
   }
 });
 
@@ -1175,6 +1424,486 @@ app.delete('/api/documents/:documentId', authenticateToken, async (req, res) => 
   }
 });
 
+// ─── Dashboard Preferences ────────────────────────────────────────────────────
+
+app.get('/api/dashboard-preferences', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        'SELECT card_stat1, card_stat2, card_stat3 FROM user_preferences WHERE LOWER(email) = ?',
+        [email],
+      );
+
+      if (rows.length === 0) {
+        // No saved preferences yet — return defaults
+        return res.status(200).json({
+          metrics: ['totalApplications', 'activeInterviews', 'pendingReminders'],
+        });
+      }
+
+      const { card_stat1, card_stat2, card_stat3 } = rows[0];
+      res.status(200).json({ metrics: [card_stat1, card_stat2, card_stat3] });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error retrieving dashboard preferences.' });
+  }
+});
+
+app.post('/api/dashboard-preferences', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const { metrics } = req.body;
+
+  if (!Array.isArray(metrics) || metrics.length !== 3) {
+    return res.status(400).json({ message: 'metrics must be an array of 3 values.' });
+  }
+
+  const VALID_METRICS = new Set([
+    'totalApplications', 'activeInterviews', 'pendingReminders',
+    'totalReminders', 'totalContacts', 'savedApplications',
+    'appliedApplications', 'offers', 'rejected',
+  ]);
+
+  if (!metrics.every((m) => VALID_METRICS.has(m))) {
+    return res.status(400).json({ message: 'One or more metric values are invalid.' });
+  }
+
+  const [stat1, stat2, stat3] = metrics;
+
+  try {
+    const connection = await createConnection();
+    try {
+      await connection.execute(
+        `INSERT INTO user_preferences (email, card_stat1, card_stat2, card_stat3)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           card_stat1 = VALUES(card_stat1),
+           card_stat2 = VALUES(card_stat2),
+           card_stat3 = VALUES(card_stat3)`,
+        [email, stat1, stat2, stat3],
+      );
+
+      res.status(200).json({ message: 'Preferences saved.' });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error saving dashboard preferences.' });
+  }
+});
+
+// ─── Contacts ────────────────────────────────────────────────────────────────
+
+function toContactRecord(body, email) {
+  return {
+    email,
+    name: String(body.name || '').trim(),
+    company: String(body.company || '').trim(),
+    role: normalizeOptionalString(body.role),
+    relationshipStrength: String(body.relationshipStrength || 'warm').trim().toLowerCase(),
+    contactEmail: normalizeOptionalString(body.contactEmail),
+    phone: normalizeOptionalString(body.phone),
+    linkedin: normalizeOptionalString(body.linkedin),
+    preferredCommunication: String(body.preferredCommunication || 'email').trim().toLowerCase(),
+    lastContactedDate: body.lastContactedDate || null,
+    nextFollowupDate: body.nextFollowupDate || null,
+    notes: normalizeOptionalString(body.notes),
+  };
+}
+
+const VALID_RELATIONSHIP_STRENGTHS = ['weak', 'warm', 'strong', 'advocate'];
+const VALID_COMMUNICATION_PREFERENCES = ['email', 'phone', 'linkedin', 'text', 'in_person'];
+
+function validateContactPayload(contact) {
+  const errors = [];
+  if (!contact.name) errors.push('Contact name is required.');
+  if (!contact.company) errors.push('Company is required.');
+  if (!VALID_RELATIONSHIP_STRENGTHS.includes(contact.relationshipStrength)) {
+    errors.push('Invalid relationship strength.');
+  }
+  if (!VALID_COMMUNICATION_PREFERENCES.includes(contact.preferredCommunication)) {
+    errors.push('Invalid communication preference.');
+  }
+  if (contact.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.contactEmail)) {
+    errors.push('Contact email must be valid.');
+  }
+  if (contact.linkedin) {
+    try { new URL(contact.linkedin); } catch { errors.push('LinkedIn URL must be valid.'); }
+  }
+  if (contact.lastContactedDate && Number.isNaN(Date.parse(contact.lastContactedDate))) {
+    errors.push('Last contacted date must be a valid date.');
+  }
+  if (contact.nextFollowupDate && Number.isNaN(Date.parse(contact.nextFollowupDate))) {
+    errors.push('Next follow-up date must be a valid date.');
+  }
+  return errors;
+}
+
+const CONTACT_SELECT_COLS = `
+  contact_id,
+  email,
+  contact_name,
+  contact_company,
+  contact_role,
+  relationship_strength,
+  contact_email,
+  contact_phone,
+  contact_linkedin,
+  preferred_communication,
+  last_contacted_date,
+  next_followup_date,
+  contact_notes`;
+
+app.get('/api/contacts', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        `SELECT ${CONTACT_SELECT_COLS}
+        FROM contact
+        WHERE LOWER(email) = ?
+        ORDER BY next_followup_date ASC, contact_id DESC`,
+        [email],
+      );
+      res.status(200).json({ contacts: rows });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error retrieving contacts: ${detail}` : 'Error retrieving contacts.' });
+  }
+});
+
+app.post('/api/contacts', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const contact = toContactRecord(req.body, email);
+  const validationErrors = validateContactPayload(contact);
+
+  if (validationErrors.length > 0) {
+    return res.status(400).json({ message: validationErrors[0], errors: validationErrors });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [result] = await connection.execute(
+        `INSERT INTO contact (
+          email,
+          contact_name,
+          contact_company,
+          contact_role,
+          relationship_strength,
+          contact_email,
+          contact_phone,
+          contact_linkedin,
+          preferred_communication,
+          last_contacted_date,
+          next_followup_date,
+          contact_notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          contact.email,
+          contact.name,
+          contact.company,
+          contact.role,
+          contact.relationshipStrength,
+          contact.contactEmail,
+          contact.phone,
+          contact.linkedin,
+          contact.preferredCommunication,
+          contact.lastContactedDate,
+          contact.nextFollowupDate,
+          contact.notes,
+        ],
+      );
+
+      const [rows] = await connection.execute(
+        `SELECT ${CONTACT_SELECT_COLS} FROM contact WHERE contact_id = ? AND LOWER(email) = ?`,
+        [result.insertId, email],
+      );
+
+      res.status(201).json({ contact: rows[0] });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error creating contact: ${detail}` : 'Error creating contact.' });
+  }
+});
+
+app.put('/api/contacts/:contactId', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const contactId = Number(req.params.contactId);
+
+  if (!Number.isInteger(contactId) || contactId <= 0) {
+    return res.status(400).json({ message: 'Invalid contact id.' });
+  }
+
+  const contact = toContactRecord(req.body, email);
+  const validationErrors = validateContactPayload(contact);
+
+  if (validationErrors.length > 0) {
+    return res.status(400).json({ message: validationErrors[0], errors: validationErrors });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [result] = await connection.execute(
+        `UPDATE contact
+        SET
+          contact_name = ?,
+          contact_company = ?,
+          contact_role = ?,
+          relationship_strength = ?,
+          contact_email = ?,
+          contact_phone = ?,
+          contact_linkedin = ?,
+          preferred_communication = ?,
+          last_contacted_date = ?,
+          next_followup_date = ?,
+          contact_notes = ?
+        WHERE contact_id = ? AND LOWER(email) = ?`,
+        [
+          contact.name,
+          contact.company,
+          contact.role,
+          contact.relationshipStrength,
+          contact.contactEmail,
+          contact.phone,
+          contact.linkedin,
+          contact.preferredCommunication,
+          contact.lastContactedDate,
+          contact.nextFollowupDate,
+          contact.notes,
+          contactId,
+          email,
+        ],
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: 'Contact not found.' });
+      }
+
+      const [rows] = await connection.execute(
+        `SELECT ${CONTACT_SELECT_COLS} FROM contact WHERE contact_id = ? AND LOWER(email) = ?`,
+        [contactId, email],
+      );
+
+      res.status(200).json({ contact: rows[0] });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error updating contact: ${detail}` : 'Error updating contact.' });
+  }
+});
+
+app.delete('/api/contacts/:contactId', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const contactId = Number(req.params.contactId);
+
+  if (!Number.isInteger(contactId) || contactId <= 0) {
+    return res.status(400).json({ message: 'Invalid contact id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [result] = await connection.execute(
+        'DELETE FROM contact WHERE contact_id = ? AND LOWER(email) = ?',
+        [contactId, email],
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: 'Contact not found.' });
+      }
+
+      res.status(204).send();
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error deleting contact: ${detail}` : 'Error deleting contact.' });
+  }
+});
+
+// --- Application ↔ Contact linking routes ---
+
+app.get('/api/contacts/:contactId/applications', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const contactId = Number(req.params.contactId);
+
+  if (!Number.isInteger(contactId) || contactId <= 0) {
+    return res.status(400).json({ message: 'Invalid contact id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [rows] = await connection.execute(
+        `SELECT a.application_id
+         FROM application a
+         JOIN application_contact ac ON a.application_id = ac.application_id
+         WHERE ac.contact_id = ? AND LOWER(a.email) = ?`,
+        [contactId, email],
+      );
+      res.status(200).json({ applicationIds: rows.map((r) => r.application_id) });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error retrieving linked applications: ${detail}` : 'Error retrieving linked applications.' });
+  }
+});
+
+app.get('/api/jobs/:applicationId/contacts', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const applicationId = Number(req.params.applicationId);
+
+  if (!Number.isInteger(applicationId) || applicationId <= 0) {
+    return res.status(400).json({ message: 'Invalid application id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [appRows] = await connection.execute(
+        'SELECT application_id FROM application WHERE application_id = ? AND LOWER(email) = ?',
+        [applicationId, email],
+      );
+      if (!appRows.length) return res.status(404).json({ message: 'Application not found.' });
+
+      const [rows] = await connection.execute(
+        `SELECT c.contact_id,
+                c.email,
+                c.contact_name,
+                c.contact_company,
+                c.contact_role,
+                c.relationship_strength,
+                c.contact_email,
+                c.contact_phone,
+                c.contact_linkedin,
+                c.preferred_communication,
+                c.last_contacted_date,
+                c.next_followup_date,
+                c.contact_notes
+         FROM contact c
+         JOIN application_contact ac ON c.contact_id = ac.contact_id
+         WHERE ac.application_id = ? AND LOWER(c.email) = ?`,
+        [applicationId, email],
+      );
+      res.status(200).json({ contacts: rows });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error retrieving linked contacts: ${detail}` : 'Error retrieving linked contacts.' });
+  }
+});
+
+app.post('/api/jobs/:applicationId/contacts/:contactId', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const applicationId = Number(req.params.applicationId);
+  const contactId = Number(req.params.contactId);
+
+  if (!Number.isInteger(applicationId) || applicationId <= 0) {
+    return res.status(400).json({ message: 'Invalid application id.' });
+  }
+  if (!Number.isInteger(contactId) || contactId <= 0) {
+    return res.status(400).json({ message: 'Invalid contact id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [appRows] = await connection.execute(
+        'SELECT application_id FROM application WHERE application_id = ? AND LOWER(email) = ?',
+        [applicationId, email],
+      );
+      if (!appRows.length) return res.status(404).json({ message: 'Application not found.' });
+
+      const [contactRows] = await connection.execute(
+        'SELECT contact_id FROM contact WHERE contact_id = ? AND LOWER(email) = ?',
+        [contactId, email],
+      );
+      if (!contactRows.length) return res.status(404).json({ message: 'Contact not found.' });
+
+      await connection.execute(
+        'INSERT IGNORE INTO application_contact (application_id, contact_id) VALUES (?, ?)',
+        [applicationId, contactId],
+      );
+
+      const [rows] = await connection.execute(
+        `SELECT ${CONTACT_SELECT_COLS} FROM contact WHERE contact_id = ?`,
+        [contactId],
+      );
+      res.status(201).json({ contact: rows[0] });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error linking contact: ${detail}` : 'Error linking contact.' });
+  }
+});
+
+app.delete('/api/jobs/:applicationId/contacts/:contactId', authenticateToken, async (req, res) => {
+  const email = normalizeEmail(req.user.email);
+  const applicationId = Number(req.params.applicationId);
+  const contactId = Number(req.params.contactId);
+
+  if (!Number.isInteger(applicationId) || applicationId <= 0) {
+    return res.status(400).json({ message: 'Invalid application id.' });
+  }
+  if (!Number.isInteger(contactId) || contactId <= 0) {
+    return res.status(400).json({ message: 'Invalid contact id.' });
+  }
+
+  try {
+    const connection = await createConnection();
+    try {
+      const [appRows] = await connection.execute(
+        'SELECT application_id FROM application WHERE application_id = ? AND LOWER(email) = ?',
+        [applicationId, email],
+      );
+      if (!appRows.length) return res.status(404).json({ message: 'Application not found.' });
+
+      await connection.execute(
+        'DELETE FROM application_contact WHERE application_id = ? AND contact_id = ?',
+        [applicationId, contactId],
+      );
+      res.status(200).json({ message: 'Contact unlinked.' });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error(error);
+    const detail = error.sqlMessage || error.message;
+    res.status(500).json({ message: detail ? `Error unlinking contact: ${detail}` : 'Error unlinking contact.' });
+  }
+});
+
 app.use((error, _req, res, next) => {
   if (error instanceof multer.MulterError) {
     return res.status(400).json({ message: error.message });
@@ -1193,6 +1922,38 @@ if (servingReactBuild) {
   });
 }
 
+async function initDatabase() {
+  try {
+    const connection = await createConnection();
+    try {
+      await connection.execute(`
+        CREATE TABLE IF NOT EXISTS notification (
+          notification_id INT AUTO_INCREMENT PRIMARY KEY,
+          email VARCHAR(255) NOT NULL,
+          type VARCHAR(50) NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          message TEXT NOT NULL,
+          application_id INT DEFAULT NULL,
+          is_read TINYINT(1) NOT NULL DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await connection.execute(`
+        CREATE TABLE IF NOT EXISTS application_contact (
+          application_id INT NOT NULL,
+          contact_id INT NOT NULL,
+          PRIMARY KEY (application_id, contact_id)
+        )
+      `);
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    console.error('Failed to initialize database tables:', error);
+  }
+}
+
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
+  initDatabase();
 });

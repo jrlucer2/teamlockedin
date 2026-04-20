@@ -1,52 +1,43 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import lockedInLogo from "../assets/lockedindark.png";
+import ProfileModal from "../components/ProfileModal";
 import "../styles/dashboard.css";
 import "../styles/contacts.css";
+import { getContacts, createContact, updateContact, deleteContact as apiDeleteContact, linkContactToApplication, unlinkContactFromApplication, fetchApplicationIdsForContact } from "../lib/api";
+import { fetchApplications } from "../lib/applicationsApi";
 
-const SEED_CONTACTS = [
-  {
-    id: 1,
-    name: "Ari Kim",
-    company: "Google",
-    role: "Recruiter",
-    email: "ari.kim@example.com",
-    phone: "(555) 210-1192",
-    linkedin: "https://www.linkedin.com/in/ari-kim",
-    relationshipStrength: "warm",
-    communicationPreference: "email",
-    lastContactedDate: "2026-02-28",
-    nextFollowUpDate: "2026-03-04",
-    notes: "Prefers concise updates. Mentioned team fit interview round.",
-  },
-  {
-    id: 2,
-    name: "Miguel Torres",
-    company: "Amazon",
-    role: "Hiring Manager",
-    email: "miguel.torres@example.com",
-    phone: "(555) 900-3378",
-    linkedin: "",
-    relationshipStrength: "strong",
-    communicationPreference: "phone",
-    lastContactedDate: "2026-02-25",
-    nextFollowUpDate: "2026-03-02",
-    notes: "Wants follow-up after portfolio update.",
-  },
-  {
-    id: 3,
-    name: "Priya Nair",
-    company: "Microsoft",
-    role: "Reference",
-    email: "priya.nair@example.com",
-    phone: "",
-    linkedin: "https://www.linkedin.com/in/priya-nair",
-    relationshipStrength: "advocate",
-    communicationPreference: "linkedin",
-    lastContactedDate: "2026-02-20",
-    nextFollowUpDate: "2026-03-06",
-    notes: "Offered to introduce me to product team contact.",
-  },
-];
+function fromBackend(row) {
+  return {
+    id: row.contact_id,
+    name: row.contact_name || "",
+    company: row.contact_company || "",
+    role: row.contact_role || "",
+    email: row.contact_email || "",
+    phone: row.contact_phone || "",
+    linkedin: row.contact_linkedin || "",
+    relationshipStrength: (row.relationship_strength || "warm").toLowerCase(),
+    communicationPreference: (row.preferred_communication || "email").toLowerCase(),
+    lastContactedDate: row.last_contacted_date ? String(row.last_contacted_date).split("T")[0] : "",
+    nextFollowUpDate: row.next_followup_date ? String(row.next_followup_date).split("T")[0] : "",
+    notes: row.contact_notes || "",
+  };
+}
+
+function toApiPayload(local) {
+  return {
+    name: local.name,
+    company: local.company,
+    role: local.role || null,
+    contactEmail: local.email || null,
+    phone: local.phone || null,
+    linkedin: local.linkedin || null,
+    relationshipStrength: local.relationshipStrength,
+    preferredCommunication: local.communicationPreference,
+    lastContactedDate: local.lastContactedDate || null,
+    nextFollowupDate: local.nextFollowUpDate || null,
+    notes: local.notes || null,
+  };
+}
 
 const INITIAL_FORM = {
   id: null,
@@ -79,7 +70,7 @@ function toLabel(value) {
     .join(" ");
 }
 
-function ContactModal({ title, children, onClose }) {
+function ContactModal({ title, children, footer, onClose }) {
   return (
     <div
       className="contacts-modal-backdrop"
@@ -98,14 +89,17 @@ function ContactModal({ title, children, onClose }) {
           </button>
         </div>
         <div className="contacts-modal-body">{children}</div>
+        {footer ? <div className="contacts-modal-footer">{footer}</div> : null}
       </div>
     </div>
   );
 }
 
-function ContactForm({ initial, onSave, onCancel }) {
+
+function ContactForm({ initial, onSave, onCancel, applications = [], initialLinkedAppIds = [], formId }) {
   const [form, setForm] = useState(initial);
   const [error, setError] = useState("");
+  const [linkedAppIds, setLinkedAppIds] = useState(new Set(initialLinkedAppIds));
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -148,11 +142,12 @@ function ContactForm({ initial, onSave, onCancel }) {
       phone: form.phone.trim(),
       linkedin: form.linkedin.trim(),
       notes: form.notes.trim(),
+      linkedAppIds: [...linkedAppIds],
     });
   }
 
   return (
-    <form className="contact-form" onSubmit={submitForm}>
+    <form id={formId} className="contact-form" onSubmit={submitForm}>
       {error ? <div className="form-error">{error}</div> : null}
 
       <div className="contact-form-grid">
@@ -268,28 +263,73 @@ function ContactForm({ initial, onSave, onCancel }) {
         </label>
       </div>
 
-      <div className="contacts-modal-actions">
-        <button className="ghost-btn" type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="primary-btn" type="submit">
-          Save Contact
-        </button>
-      </div>
+      {applications.length > 0 && (
+        <div className="form-field form-field--full" style={{ marginTop: "12px" }}>
+          <span className="form-label">Link to Job Applications</span>
+          <div className="contact-app-link-list">
+            {applications.map((app) => {
+              const checked = linkedAppIds.has(app.application_id);
+              return (
+                <label key={app.application_id} className="contact-app-link-item">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      setLinkedAppIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(app.application_id)) {
+                          next.delete(app.application_id);
+                        } else {
+                          next.add(app.application_id);
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                  <span>{app.job_title} — {app.company}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </form>
   );
 }
 
 export default function Contacts({ onLogout, onNavigate }) {
-  const [contacts, setContacts] = useState(SEED_CONTACTS);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [contacts, setContacts] = useState([]);
+  const [loadingContacts, setLoadingContacts] = useState(true);
+  const [contactsError, setContactsError] = useState("");
+  const [applications, setApplications] = useState([]);
 
   const [query, setQuery] = useState("");
   const [relationshipFilter, setRelationshipFilter] = useState("all");
   const [preferenceFilter, setPreferenceFilter] = useState("all");
   const [sortBy, setSortBy] = useState("next_follow_up");
 
-  const [modalState, setModalState] = useState({ open: false, editing: null });
+  const [modalState, setModalState] = useState({ open: false, editing: null, linkedAppIds: [] });
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  useEffect(() => {
+    setLoadingContacts(true);
+    setContactsError("");
+    getContacts()
+      .then((data) => {
+        setContacts(Array.isArray(data.contacts) ? data.contacts.map(fromBackend) : []);
+      })
+      .catch((err) => {
+        setContactsError(err.message || "Failed to load contacts.");
+      })
+      .finally(() => setLoadingContacts(false));
+  }, []);
+
+  useEffect(() => {
+    fetchApplications()
+      .then((apps) => setApplications(Array.isArray(apps) ? apps : []))
+      .catch(() => setApplications([]));
+  }, []);
 
   const filtered = useMemo(() => {
     const q = normalize(query);
@@ -329,50 +369,77 @@ export default function Contacts({ onLogout, onNavigate }) {
   }, [contacts, query, relationshipFilter, preferenceFilter, sortBy]);
 
   function openCreateModal() {
-    setModalState({ open: true, editing: null });
+    setModalState({ open: true, editing: null, linkedAppIds: [] });
   }
 
-  function openEditModal(contact) {
-    setModalState({ open: true, editing: contact });
+  async function openEditModal(contact) {
+    let linkedAppIds = [];
+    try {
+      linkedAppIds = await fetchApplicationIdsForContact(contact.id);
+    } catch { /* non-critical */ }
+    setModalState({ open: true, editing: contact, linkedAppIds });
   }
 
   function closeModal() {
-    setModalState({ open: false, editing: null });
+    setModalState({ open: false, editing: null, linkedAppIds: [] });
   }
 
-  function saveContact(payload) {
-    if (payload.id == null) {
-      const nextId = Math.max(0, ...contacts.map((item) => item.id)) + 1;
-      setContacts((prev) => [{ ...payload, id: nextId }, ...prev]);
-    } else {
-      setContacts((prev) => prev.map((item) => (item.id === payload.id ? payload : item)));
+  async function saveContact(payload) {
+    try {
+      let savedContactId;
+      if (payload.id == null) {
+        const data = await createContact(toApiPayload(payload));
+        setContacts((prev) => [fromBackend(data.contact), ...prev]);
+        savedContactId = data.contact.contact_id;
+      } else {
+        const data = await updateContact(payload.id, toApiPayload(payload));
+        setContacts((prev) => prev.map((item) => (item.id === payload.id ? fromBackend(data.contact) : item)));
+        savedContactId = payload.id;
+      }
+
+      // Sync application links
+      const newIds = new Set(payload.linkedAppIds ?? []);
+      const prevIds = new Set(modalState.linkedAppIds ?? []);
+
+      const toAdd = [...newIds].filter((id) => !prevIds.has(id));
+      const toRemove = [...prevIds].filter((id) => !newIds.has(id));
+
+      await Promise.all([
+        ...toAdd.map((appId) => linkContactToApplication(appId, savedContactId).catch(() => {})),
+        ...toRemove.map((appId) => unlinkContactFromApplication(appId, savedContactId).catch(() => {})),
+      ]);
+
+      closeModal();
+    } catch (err) {
+      window.alert(err.message || "Failed to save contact.");
     }
-
-    closeModal();
   }
 
-  function markContactedToday(contactId) {
+  async function markContactedToday(contactId) {
+    const item = contacts.find((c) => c.id === contactId);
+    if (!item) return;
     const today = new Date().toISOString().slice(0, 10);
-    setContacts((prev) =>
-      prev.map((item) =>
-        item.id === contactId
-          ? {
-              ...item,
-              lastContactedDate: today,
-            }
-          : item
-      )
-    );
+    try {
+      const data = await updateContact(contactId, toApiPayload({ ...item, lastContactedDate: today }));
+      setContacts((prev) => prev.map((c) => (c.id === contactId ? fromBackend(data.contact) : c)));
+    } catch (err) {
+      window.alert(err.message || "Failed to update contact.");
+    }
   }
 
   function confirmDelete(contact) {
     setDeleteTarget(contact);
   }
 
-  function deleteContact() {
+  async function deleteContact() {
     if (!deleteTarget) return;
-    setContacts((prev) => prev.filter((item) => item.id !== deleteTarget.id));
-    setDeleteTarget(null);
+    try {
+      await apiDeleteContact(deleteTarget.id);
+      setContacts((prev) => prev.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      window.alert(err.message || "Failed to delete contact.");
+    }
   }
 
   return (
@@ -402,6 +469,18 @@ export default function Contacts({ onLogout, onNavigate }) {
           </nav>
 
           <div className="nav-actions" aria-label="Utilities">
+            <button className="icon-btn" style={{ lineHeight: 0 }} type="button" aria-label="Notifications" onClick={() => onNavigate?.("reminders")}>
+              <svg style={{ display: "block" }} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+                <path d="M13.73 21a2 2 0 01-3.46 0" />
+              </svg>
+            </button>
+            <button className="icon-btn" style={{ lineHeight: 0 }} type="button" aria-label="Profile" onClick={() => setIsProfileModalOpen(true)}>
+              <svg style={{ display: "block" }} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </button>
             <button className="danger-btn danger-btn--logout" type="button" onClick={onLogout}>
               Log Out
             </button>
@@ -483,7 +562,11 @@ export default function Contacts({ onLogout, onNavigate }) {
         </section>
 
         <section className="contacts-list" aria-label="Contacts list">
-          {!filtered.length ? (
+          {loadingContacts ? (
+            <div className="contacts-empty">Loading contacts…</div>
+          ) : contactsError ? (
+            <div className="contacts-empty">{contactsError}</div>
+          ) : !filtered.length ? (
             <div className="contacts-empty">No contacts match the current filters.</div>
           ) : (
             filtered.map((contact) => (
@@ -542,25 +625,54 @@ export default function Contacts({ onLogout, onNavigate }) {
       </main>
 
       {modalState.open ? (
-        <ContactModal title={modalState.editing ? "Edit Contact" : "New Contact"} onClose={closeModal}>
-          <ContactForm initial={modalState.editing ?? INITIAL_FORM} onSave={saveContact} onCancel={closeModal} />
+        <ContactModal
+          title={modalState.editing ? "Edit Contact" : "New Contact"}
+          onClose={closeModal}
+          footer={
+            <>
+              <button className="ghost-btn" type="button" onClick={closeModal}>
+                Cancel
+              </button>
+              <button className="primary-btn" type="submit" form="contact-form">
+                Save Contact
+              </button>
+            </>
+          }
+        >
+          <ContactForm
+            formId="contact-form"
+            initial={modalState.editing ?? INITIAL_FORM}
+            onSave={saveContact}
+            onCancel={closeModal}
+            applications={applications}
+            initialLinkedAppIds={modalState.linkedAppIds ?? []}
+          />
         </ContactModal>
       ) : null}
 
       {deleteTarget ? (
-        <ContactModal title="Delete Contact" onClose={() => setDeleteTarget(null)}>
+        <ContactModal
+          title="Delete Contact"
+          onClose={() => setDeleteTarget(null)}
+          footer={
+            <>
+              <button className="ghost-btn" type="button" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </button>
+              <button className="danger-btn" type="button" onClick={deleteContact}>
+                Delete
+              </button>
+            </>
+          }
+        >
           <p className="delete-confirm-copy">
             Delete <strong>{deleteTarget.name}</strong> from contacts? This action cannot be undone.
           </p>
-          <div className="contacts-modal-actions">
-            <button className="ghost-btn" type="button" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </button>
-            <button className="danger-btn" type="button" onClick={deleteContact}>
-              Delete
-            </button>
-          </div>
         </ContactModal>
+      ) : null}
+
+      {isProfileModalOpen ? (
+        <ProfileModal onClose={() => setIsProfileModalOpen(false)} onLogout={onLogout} />
       ) : null}
     </>
   );
